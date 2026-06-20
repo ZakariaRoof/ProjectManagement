@@ -1,0 +1,143 @@
+﻿نفس الشيء ترجم لي العربي المشفر هنا وضبطه ولا تستثني جزء
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+@{
+    ViewData["Title"] = Localization.IsRtl() ? "الاعدادت" : "Settings";
+}
+
+<div class="container-fluid">
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4 p-lg-5 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <h2 class="h4 mb-2">
+                            @(Localization.IsRtl() ? "إعدادات النظام" : "System settings")
+                        </h2>
+
+                        <p class="text-muted mb-0">
+                            @(Localization.IsRtl()
+                                                        ? "إدارة اللغة وتجربة المستخدم والتفضيلات العامة."
+                                                        : "Manage language, user experience, and general preferences.")
+                        </p>
+                    </div>
+
+                    <div class="d-flex gap-2 flex-wrap">
+                        <form method="post"
+                              asp-controller="Account"
+                              asp-action="ChangeLanguage"
+                              class="d-inline">
+                            @Html.AntiForgeryToken()
+
+                            <input type="hidden"
+                                   name="returnUrl"
+                                   value="@Context.Request.Path" />
+
+                            <button type="submit"
+                                    name="language"
+                                    value="ar"
+                                    class="btn btn-outline-primary">
+                                العربية
+                            </button>
+                        </form>
+
+                        <form method="post"
+                              asp-controller="Account"
+                              asp-action="ChangeLanguage"
+                              class="d-inline">
+                            @Html.AntiForgeryToken()
+
+                            <input type="hidden"
+                                   name="returnUrl"
+                                   value="@Context.Request.Path" />
+
+                            <button type="submit"
+                                    name="language"
+                                    value="en"
+                                    class="btn btn-outline-secondary">
+                                English
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h3 class="h6 fw-bold mb-3">
+                        @(Localization.IsRtl() ? "الواجهة" : "Interface")
+                    </h3>
+
+                    <ul class="list-unstyled small text-muted mb-0 d-grid gap-2">
+                        <li>
+                            @(Localization.IsRtl() ? "دعم العربية والإنجليزية" : "Arabic/English support")
+                        </li>
+
+                        <li>
+                            @(Localization.IsRtl() ? "شريط تنقل احترافي" : "Professional top navigation")
+                        </li>
+
+                        <li>
+                            @(Localization.IsRtl() ? "بطاقات ملخص ولوحات مهام" : "Summary cards and task boards")
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h3 class="h6 fw-bold mb-3">
+                        @(Localization.IsRtl() ? "الحساب" : "Account")
+                    </h3>
+
+                    <ul class="list-unstyled small text-muted mb-0 d-grid gap-2">
+                        <li>
+                            @(Localization.IsRtl() ? "عرض الملف الشخصي" : "View profile")
+                        </li>
+
+                        <li>
+                            @(Localization.IsRtl() ? "إدارة تسجيل الخروج" : "Sign-out management")
+                        </li>
+
+                        <li>
+                            @(Localization.IsRtl() ? "متابعة الإشعارات" : "Notification tracking")
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h3 class="h6 fw-bold mb-3">
+                        @(Localization.IsRtl() ? "التنقل السريع" : "Quick navigation")
+                    </h3>
+
+                    <div class="d-grid gap-2">
+                        <a class="btn btn-light border"
+                           asp-controller="MyProjects"
+                           asp-action="ApprovedProjects">
+                            @(Localization.IsRtl() ? "المشاريع" : "Projects")
+                        </a>
+
+                        <a class="btn btn-light border"
+                           asp-controller="MyProjects"
+                           asp-action="Tasks">
+                            @(Localization.IsRtl() ? "المهام" : "Tasks")
+                        </a>
+
+                        <a class="btn btn-light border"
+                           asp-controller="Account"
+                           asp-action="Profile">
+                            @(Localization.IsRtl() ? "الملف الشخصي" : "Profile")
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

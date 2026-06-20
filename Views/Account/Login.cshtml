@@ -1,0 +1,219 @@
+﻿@model ProjectManagementApp.Models.LoginViewModel
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+
+
+@{
+    Layout = null;
+
+    var isRtl = Localization.IsRtl();
+    var lang = Localization.GetCurrentLanguage();
+
+    var title = isRtl ? "تسجيل الدخول" : "Sign in";
+
+    var subtitle = isRtl
+        ? "أدخل بياناتك للوصول إلى نظام إدارة المشاريع"
+        : "Enter your credentials to access the project management system";
+}
+<!DOCTYPE html>
+<html lang="@lang" dir="@(isRtl ? "rtl" : "ltr")">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@title - ProjectManagementApp</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+    <style>
+        /* Override and page-specific styles to match the app theme */
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at top left, rgba(124,108,255,0.06) 0%, rgba(255,107,154,0.02) 30%, rgba(0,0,0,0) 60%);
+            font-family: Inter, Tahoma, "Segoe UI", sans-serif;
+        }
+
+        .login-shell {
+            width: min(1100px, 96vw);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: transparent;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 30px 90px rgba(11,18,32,0.06);
+        }
+
+        .login-aside {
+            padding: 3.2rem;
+            /* solid color (no gradient) per request */
+            background: var(--app-accent);
+            color: #fff;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .login-aside h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 0.6rem; }
+        .login-aside p { color: rgba(255,255,255,0.9); line-height: 1.9; margin-bottom: 1.4rem; }
+        .login-features { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: .9rem; }
+        .login-features li { display: flex; align-items: center; gap: .85rem; color: rgba(255,255,255,0.95); }
+
+        .login-panel {
+            padding: 3.2rem;
+            /* solid surface color */
+            background: var(--app-surface);
+            border-radius: 0 22px 22px 0;
+        }
+
+        .form-control { min-height: 52px; border-radius: 12px; border: 1px solid rgba(11,18,32,0.06); }
+        .btn-login { min-height: 52px; border-radius: 12px; font-weight: 800; background: var(--app-primary); border: none; color: #fff; box-shadow: 0 12px 30px rgba(124,108,255,0.12); }
+
+        .brand-tag { display: inline-flex; align-items: center; gap: .6rem; padding: .45rem .9rem; border-radius: 999px; background: rgba(255,255,255,0.12); margin-bottom: 1rem; }
+        .brand-tag i { background: rgba(255,255,255,0.12); padding: .45rem; border-radius: .6rem; }
+
+        /* Decorative circles */
+        .login-aside::before,
+        .login-shell::after {
+            content: "";
+            position: absolute;
+            border-radius: 999px;
+            filter: blur(40px);
+            opacity: .45;
+            pointer-events: none;
+        }
+
+        .login-aside::before {
+            width: 260px; height: 260px; right: -90px; top: -60px;
+            /* blurred solid light overlay */
+            background-color: rgba(255,255,255,0.12);
+        }
+
+        .login-shell::after {
+            width: 300px; height: 300px; left: -120px; bottom: -80px;
+            /* blurred solid accent overlay */
+            background-color: rgba(124,108,255,0.08);
+        }
+
+        @@media (max-width: 900px) { .login-shell { grid-template-columns: 1fr; } .login-aside, .login-panel { padding: 2rem; } .login-aside::before, .login-shell::after{ display:none } }
+    </style>
+</head>
+<body>
+    <div class="login-shell">
+        <div class="login-aside">
+            <div class="brand-tag">
+                <i class="bi bi-kanban-fill"></i>
+                <span>ProjectManagementApp</span>
+            </div>
+
+            <h1>
+                @(isRtl ? "نظام إدارة المشاريع" : "Project Management System")
+            </h1>
+
+            <p>
+                @(isRtl
+                                ? "مساحة عمل حديثة لإدارة المشاريع والمراحل والأنشطة والمهام مع متابعة يومية واضحة."
+                                : "A modern workspace for managing projects, phases, activities, and tasks with clear daily tracking.")
+            </p>
+
+            <ul class="login-features">
+                <li>
+                    <i class="bi bi-check2-circle"></i>
+                    <span>
+                        @(isRtl ? "إدارة كاملة للمشاريع والمراحل" : "Full project and phase management")
+                    </span>
+                </li>
+
+                <li>
+                    <i class="bi bi-list-check"></i>
+                    <span>
+                        @(isRtl ? "متابعة المهام والتقدم" : "Task and progress tracking")
+                    </span>
+                </li>
+
+                <li>
+                    <i class="bi bi-bell"></i>
+                    <span>
+                        @(isRtl ? "تنبيهات وإشعارات مهمة" : "Important alerts and notifications")
+                    </span>
+                </li>
+            </ul>
+        </div>
+        <div class="login-panel">
+            <div class="d-flex justify-content-between align-items-center mb-4 gap-2 flex-wrap">
+                <div>
+                    <h2 class="h3 fw-bold mb-2">@title</h2>
+                    <p class="text-muted mb-0">@subtitle</p>
+                </div>
+                <div class="btn-group">
+                    <form method="post" asp-action="ChangeLanguage" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                        <button type="submit" name="language" value="ar" class="btn btn-outline-secondary btn-sm">عربي </button>
+                    </form>
+                    <form method="post" asp-action="ChangeLanguage" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                        <button type="submit" name="language" value="en" class="btn btn-outline-secondary btn-sm">English</button>
+                    </form>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger rounded-4">@Model.ErrorMessage</div>
+            }
+            <form method="post" asp-action="Login">
+                @Html.AntiForgeryToken()
+
+                <input type="hidden" name="returnUrl" value="@ViewBag.ReturnUrl" />
+
+                <div class="mb-3">
+                    <label asp-for="EmployeeCode" class="form-label">
+                        @(isRtl ? "اسم المستخدم" : "Username")
+                    </label>
+
+                    <input asp-for="EmployeeCode"
+                           class="form-control"
+                           placeholder="@(isRtl ? "أدخل اسم المستخدم" : "Enter username")" />
+
+                    <span asp-validation-for="EmployeeCode" class="text-danger small"></span>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Password" class="form-label">
+                        @(isRtl ? "كلمة المرور" : "Password")
+                    </label>
+
+                    <input asp-for="Password"
+                           class="form-control"
+                           placeholder="@(isRtl ? "أدخل كلمة المرور" : "Enter password")" />
+
+                    <span asp-validation-for="Password" class="text-danger small"></span>
+                </div>
+
+                <div class="form-check mb-4">
+                    <input asp-for="RememberMe" class="form-check-input" />
+
+                    <label asp-for="RememberMe" class="form-check-label">
+                        @(isRtl ? "تذكرني" : "Remember me")
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 btn-login">
+                    @title
+                </button>
+
+                <div class="text-muted small mt-3">
+                    @(isRtl ? "بيانات الدخول: admin / admin" : "Demo credentials: admin / admin")
+                </div>
+            </form>
+        </div>
+    </div>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
+    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"></script>
+</body>
+</html>

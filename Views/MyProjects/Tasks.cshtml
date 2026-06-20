@@ -1,0 +1,1462 @@
+@model ProjectManagementApp.Models.MyProjectsTasksDashboardViewModel
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+@{
+    ViewData["Title"] = Localization.GetString("Tasks") + " - " + Localization.GetString("MyProjects");
+    var projectsJson = Json.Serialize(Model.Projects.Select(x => new
+    {
+        x.ProjectId,
+        x.ProjectName,
+        x.ResponsibleUserId
+    }).ToList());
+    var teamMembersJson = Json.Serialize(Model.TeamMembers);
+    var assignmentsJson = Json.Serialize(Model.Assignments);
+    var detailedTasksJson = Json.Serialize(Model.DetailedTasks);
+    var isRtl = Localization.IsRtl();
+}
+
+<div class="app-content-header">
+    <div class="container-fluid">
+        <div class="row align-items-center">
+            <div class="col-sm-6">
+                <h3 class="mb-0">@Localization.GetString("Tasks")</h3>
+            </div>
+            <div class="col-sm-6">
+                <ol class="breadcrumb float-sm-end">
+                    <li class="breadcrumb-item"><a href="~/MyProjects/ApprovedProjects">@Localization.GetString("Home")</a></li>
+                    <li class="breadcrumb-item">@Localization.GetString("MyProjects")</li>
+                    <li class="breadcrumb-item active">@Localization.GetString("Tasks")</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="app-content">
+    <div class="container-fluid">
+        @Html.AntiForgeryToken()
+        <div class="card shadow-sm border-0 mb-4 tasks-filter-card">
+            <div class="card-body p-4">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-4">
+                        <label class="form-label fw-semibold">@Localization.GetString("Project")</label>
+                        <select id="taskDashboardProjectFilter" class="form-select">
+                            <option value="">@Localization.GetString("AllProjects")</option>
+                            @foreach (var project in Model.Projects)
+                            {
+                                <option value="@project.ProjectId">@project.ProjectName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-lg-8">
+                        <div class="task-dashboard-info-strip">
+                            <div>
+                                <div class="task-dashboard-info-label">@Localization.GetString("Department")</div>
+                                <div class="task-dashboard-info-value">@(Model.DepartmentName ?? "-")</div>
+                            </div>
+                            <div>
+                                <div class="task-dashboard-info-label">@Localization.GetString("Projects")</div>
+                                <div class="task-dashboard-info-value" id="taskDashboardProjectCount">0</div>
+                            </div>
+                            <div>
+                                <div class="task-dashboard-info-label">@Localization.GetString("TeamMembers")</div>
+                                <div class="task-dashboard-info-value" id="taskDashboardMemberCount">0</div>
+                            </div>
+                            <div>
+                                <div class="task-dashboard-info-label">@Localization.GetString("TotalTasks")</div>
+                                <div class="task-dashboard-info-value" id="taskDashboardTaskCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="small fw-semibold text-muted mb-2">@Localization.GetString("Projects")</div>
+                    <div id="taskDashboardProjectTabs" class="task-project-tabs d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm task-project-tab active" data-project-id="">@Localization.GetString("AllProjects")</button>
+                        @foreach (var project in Model.Projects)
+                        {
+                            <button type="button" class="btn btn-sm task-project-tab" data-project-id="@project.ProjectId">@project.ProjectName</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!Model.TeamMembers.Any())
+        {
+            <div class="alert alert-info">@Localization.GetString("NoDataAvailable")</div>
+        }
+        else
+        {
+            <div class="row g-4">
+                <div class="col-xxl-3 col-xl-4">
+                    <div class="card shadow-sm border-0 task-people-card h-100">
+                        <div class="card-header bg-white border-0 pb-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">@Localization.GetString("TeamMembers")</h5>
+                                <span class="badge rounded-pill text-bg-light border" id="teamMembersBadge">@Model.TeamMembers.Count</span>
+                            </div>
+                        </div>
+                        <div class="card-body pt-3">
+                            <div id="taskDashboardMembers" class="task-member-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xxl-9 col-xl-8">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6 col-xl-3">
+                            <div class="task-summary-card task-summary-primary">
+                                <div class="task-summary-label">@Localization.GetString("TotalTasks")</div>
+                                <div class="task-summary-value" id="summaryTotalTasks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="task-summary-card task-summary-success">
+                                <div class="task-summary-label">@Localization.GetString("CompletedTasks")</div>
+                                <div class="task-summary-value" id="summaryCompletedTasks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="task-summary-card task-summary-warning">
+                                <div class="task-summary-label">@Localization.GetString("InProgress")</div>
+                                <div class="task-summary-value" id="summaryInProgressTasks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="task-summary-card task-summary-danger">
+                                <div class="task-summary-label">@Localization.GetString("OverdueTasks")</div>
+                                <div class="task-summary-value" id="summaryOverdueTasks">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm border-0 mb-3">
+                        <div class="card-body employee-hero-card">
+                            <div class="employee-hero-avatar" id="selectedEmployeeAvatar"></div>
+                            <div class="employee-hero-content">
+                                <div class="employee-hero-title" id="selectedEmployeeName">-</div>
+                                <div class="employee-hero-subtitle" id="selectedEmployeePosition">-</div>
+                                <div class="employee-hero-metrics">
+                                    <span class="badge text-bg-light border" id="selectedEmployeeProjects">0 Projects</span>
+                                    <span class="badge text-bg-light border" id="selectedEmployeeCompletion">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-12">
+                            <div class="card shadow-sm border-0 h-100 tasks-table-card">
+                                <div class="card-body">
+                                    <div class="dashboard-section-title">@Localization.GetString("AssignedTasks")</div>
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>@Localization.GetString("TaskName")</th>
+                                                    <th>@Localization.GetString("Project")</th>
+                                                    <th>@Localization.GetString("StartDate")</th>
+                                                    <th>@Localization.GetString("EndDate")</th>
+                                                    <th>@Localization.GetString("PercentComplete")</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="taskAssignmentsTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-4">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-body">
+                                    <div class="dashboard-section-title">@Localization.GetString("TaskStatusDistribution")</div>
+                                    <div class="chart-panel chart-panel-md">
+                                        <canvas id="taskStatusChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-8">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-body">
+                                    <div class="dashboard-section-title">@Localization.GetString("EmployeeProgress")</div>
+                                    <div class="chart-panel chart-panel-md">
+                                        <canvas id="employeeProgressChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-12">
+                            <div class="card shadow-sm border-0">
+                                <div class="card-body">
+                                    <div class="dashboard-section-title">@Localization.GetString("TotalTasksCompleted")</div>
+                                    <div class="chart-panel chart-panel-lg">
+                                        <canvas id="tasksCompletedChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-lg-12">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-body">
+                                    <div class="dashboard-section-title">@Localization.GetString("TasksByProjects")</div>
+                                    <div class="chart-panel chart-panel-md">
+                                        <canvas id="tasksByProjectsChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="offcanvas offcanvas-end task-detail-offcanvas" tabindex="-1" id="taskDetailOffcanvas" aria-labelledby="taskDetailOffcanvasLabel">
+    <div class="offcanvas-header border-bottom">
+        <div>
+            <h5 class="offcanvas-title" id="taskDetailOffcanvasLabel">@Localization.GetString("TaskName")</h5>
+            <div class="small text-muted" id="taskDetailSubtitle">-</div>
+        </div>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column gap-3">
+        <div class="task-detail-summary-grid">
+            <div class="task-detail-summary-item">
+                <span class="task-detail-summary-label">@Localization.GetString("Project")</span>
+                <strong id="taskDetailProjectName">-</strong>
+            </div>
+            <div class="task-detail-summary-item">
+                <span class="task-detail-summary-label">@Localization.GetString("PhaseName")</span>
+                <strong id="taskDetailPhaseName">-</strong>
+            </div>
+            <div class="task-detail-summary-item">
+                <span class="task-detail-summary-label">@Localization.GetString("Activity")</span>
+                <strong id="taskDetailActivityName">-</strong>
+            </div>
+            <div class="task-detail-summary-item">
+                <span class="task-detail-summary-label">@Localization.GetString("AssignedTo")</span>
+                <strong id="taskDetailAssigneeNames">-</strong>
+            </div>
+        </div>
+
+        <input type="hidden" id="taskDetailTaskId" />
+        <input type="hidden" id="taskDetailProjectId" />
+        <input type="hidden" id="taskDetailPhaseActivityId" />
+
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">@Localization.GetString("TaskName")</label>
+                <input type="text" class="form-control" id="taskDetailTaskName" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">@Localization.GetString("StartDate")</label>
+                <input type="date" class="form-control" id="taskDetailStartDate" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">@Localization.GetString("EndDate")</label>
+                <input type="date" class="form-control" id="taskDetailEndDate" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">@Localization.GetString("Priority")</label>
+                <select class="form-select" id="taskDetailPriority">
+                    <option value="Low">@Localization.GetString("Low")</option>
+                    <option value="Medium">@Localization.GetString("Medium")</option>
+                    <option value="High">@Localization.GetString("High")</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">@Localization.GetString("PercentComplete")</label>
+                <input type="number" min="0" max="100" class="form-control" id="taskDetailPercentComplete" />
+            </div>
+            <div class="col-12">
+                <label class="form-label">@Localization.GetString("Notes")</label>
+                <textarea class="form-control" rows="4" id="taskDetailNotes"></textarea>
+            </div>
+        </div>
+
+        <div class="task-detail-section">
+            <div class="task-detail-section-title">Checklist</div>
+            <ul class="task-detail-list" id="taskDetailChecklist"></ul>
+        </div>
+
+        <div class="task-detail-section">
+            <div class="task-detail-section-title">Links</div>
+            <ul class="task-detail-list" id="taskDetailLinks"></ul>
+        </div>
+    </div>
+    <div class="offcanvas-footer border-top p-3 d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="offcanvas">@Localization.GetString("Cancel")</button>
+        <button type="button" class="btn btn-primary ms-auto" id="btnTaskDetailSave">@Localization.GetString("Save")</button>
+        <button type="button" class="btn btn-outline-danger d-none" id="btnTaskDetailDelete">@Localization.GetString("Delete")</button>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+$(function () {
+    const rawProjects = @Html.Raw(projectsJson);
+    const rawTeamMembers = @Html.Raw(teamMembersJson);
+    const rawAssignments = @Html.Raw(assignmentsJson);
+    const detailedTasks = @Html.Raw(detailedTasksJson);
+    const currentUserId = @Model.CurrentUserId;
+    const isAdministrator = @Json.Serialize(Model.IsAdministrator);
+    const isRtl = @Json.Serialize(isRtl);
+    const labels = {
+        noDataAvailable: @Json.Serialize(Localization.GetString("NoDataAvailable")),
+        allProjects: @Json.Serialize(Localization.GetString("AllProjects")),
+        completed: @Json.Serialize(Localization.GetString("Completed")),
+        completedTasks: @Json.Serialize(Localization.GetString("CompletedTasks")),
+        save: @Json.Serialize(Localization.GetString("Save")),
+        delete: @Json.Serialize(Localization.GetString("Delete")),
+        cancel: @Json.Serialize(Localization.GetString("Cancel")),
+        success: @Json.Serialize(Localization.GetString("Success")),
+        error: @Json.Serialize(Localization.GetString("Error")),
+        warning: @Json.Serialize(Localization.GetString("Warning")),
+        deleteConfirmation: @Json.Serialize(Localization.GetString("DeleteConfirmation")),
+        recordDeletedSuccessfully: @Json.Serialize(Localization.GetString("RecordDeletedSuccessfully")),
+        taskNameRequired: @Json.Serialize(Localization.GetString("TaskNameRequired")),
+        inProgress: @Json.Serialize(Localization.GetString("InProgress")),
+        notStarted: @Json.Serialize(Localization.GetString("NotStarted")),
+        overdue: @Json.Serialize(Localization.GetString("OverdueTasks")),
+        percentComplete: @Json.Serialize(Localization.GetString("PercentComplete")),
+        tasks: @Json.Serialize(Localization.GetString("Tasks")),
+        projects: @Json.Serialize(Localization.GetString("Projects"))
+    };
+    const fallbackLabels = {
+        task: 'Task',
+        phase: 'Phase',
+        activity: 'Activity',
+        project: 'Project',
+        workflowItem: 'Workflow item'
+    };
+
+    function pickValue(source, camelName, pascalName, fallback = null) {
+        if (!source) {
+            return fallback;
+        }
+
+        if (source[camelName] !== undefined && source[camelName] !== null) {
+            return source[camelName];
+        }
+
+        if (source[pascalName] !== undefined && source[pascalName] !== null) {
+            return source[pascalName];
+        }
+
+        return fallback;
+    }
+
+    const projects = (rawProjects || []).map(function (item) {
+        return {
+            ProjectId: pickValue(item, 'projectId', 'ProjectId', ''),
+            ProjectName: pickValue(item, 'projectName', 'ProjectName', ''),
+            ResponsibleUserId: pickValue(item, 'responsibleUserId', 'ResponsibleUserId', null)
+        };
+    });
+
+    const teamMembers = (rawTeamMembers || []).map(function (item) {
+        return {
+            EmployeeId: Number(pickValue(item, 'employeeId', 'EmployeeId', 0) || 0),
+            EmployeeName: pickValue(item, 'employeeName', 'EmployeeName', ''),
+            PositionName: pickValue(item, 'positionName', 'PositionName', ''),
+            DepartmentName: pickValue(item, 'departmentName', 'DepartmentName', ''),
+            PictureBase64: pickValue(item, 'pictureBase64', 'PictureBase64', '')
+        };
+    });
+
+    const assignments = (rawAssignments || []).map(function (item) {
+        return {
+            PhaseTaskId: Number(pickValue(item, 'phaseTaskId', 'PhaseTaskId', 0) || 0),
+            ProjectId: pickValue(item, 'projectId', 'ProjectId', ''),
+            ProjectName: pickValue(item, 'projectName', 'ProjectName', ''),
+            EmployeeId: Number(pickValue(item, 'employeeId', 'EmployeeId', 0) || 0),
+            EmployeeName: pickValue(item, 'employeeName', 'EmployeeName', ''),
+            TaskName: pickValue(item, 'taskName', 'TaskName', ''),
+            PhaseName: pickValue(item, 'phaseName', 'PhaseName', ''),
+            ActivityName: pickValue(item, 'activityName', 'ActivityName', ''),
+            StartDate: pickValue(item, 'startDate', 'StartDate', null),
+            EndDate: pickValue(item, 'endDate', 'EndDate', null),
+            Priority: pickValue(item, 'priority', 'Priority', 'Medium'),
+            PercentComplete: Number(pickValue(item, 'percentComplete', 'PercentComplete', 0) || 0)
+        };
+    });
+
+    let selectedProjectId = '';
+    let selectedEmployeeId = teamMembers.some(x => x.EmployeeId === currentUserId)
+        ? currentUserId
+        : (teamMembers[0]?.EmployeeId || 0);
+
+    let tasksCompletedChart = null;
+    let taskStatusChart = null;
+    let employeeProgressChart = null;
+    let tasksByProjectsChart = null;
+    let currentTaskDetail = null;
+    const taskDetailLookup = {};
+    const requestVerificationToken = $('input[name="__RequestVerificationToken"]').val();
+    const saveTaskUrl = '@Url.Action("SavePhaseTask", "MyProjects")';
+    const deleteTaskUrl = '@Url.Action("DeletePhaseTask", "MyProjects")';
+    const taskDetailOffcanvasElement = document.getElementById('taskDetailOffcanvas');
+    const taskDetailOffcanvas = taskDetailOffcanvasElement ? new bootstrap.Offcanvas(taskDetailOffcanvasElement) : null;
+
+    detailedTasks.forEach(function (task) {
+        const taskId = getValue(task, 'phaseTaskId', 'PhaseTaskId', 0);
+        if (taskId) {
+            taskDetailLookup[String(taskId)] = task;
+        }
+    });
+
+    function decodeHtml(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        let decoded = String(value);
+        const textarea = document.createElement('textarea');
+
+        for (let i = 0; i < 3; i++) {
+            if (decoded.indexOf('&') === -1) {
+                break;
+            }
+
+            textarea.innerHTML = decoded;
+            const next = textarea.value;
+            if (next === decoded) {
+                break;
+            }
+
+            decoded = next;
+        }
+
+        return decoded;
+    }
+
+    function normalizeText(value, fallback = '-') {
+        const decoded = decodeHtml(value).trim();
+        return decoded || fallback;
+    }
+
+    function looksEncodedText(value) {
+        const text = String(value || '');
+        return /&#x?[0-9a-f]+;|&(?:amp;)?#|x[0-9a-f]{3,}/i.test(text);
+    }
+
+    function normalizeDashboardText(value, fallback = '-') {
+        const decoded = normalizeText(value, fallback);
+        return looksEncodedText(decoded) ? fallback : decoded;
+    }
+
+    function getValue(source, camelName, pascalName, fallback = null) {
+        if (!source) {
+            return fallback;
+        }
+
+        if (source[camelName] !== undefined && source[camelName] !== null) {
+            return source[camelName];
+        }
+
+        if (source[pascalName] !== undefined && source[pascalName] !== null) {
+            return source[pascalName];
+        }
+
+        return fallback;
+    }
+
+    function getTaskDisplayName(item, index) {
+        return normalizeDashboardText(item?.TaskName, `${fallbackLabels.task} ${index + 1}`);
+    }
+
+    function getProjectDisplayName(value, index = 1) {
+        return normalizeDashboardText(value, `${fallbackLabels.project} ${index}`);
+    }
+
+    function getPhaseDisplayName(value) {
+        return normalizeDashboardText(value, fallbackLabels.phase);
+    }
+
+    function getActivityDisplayName(value) {
+        return normalizeDashboardText(value, fallbackLabels.activity);
+    }
+
+    function getFreshCanvas(id) {
+        const current = document.getElementById(id);
+        if (!current) {
+            return null;
+        }
+
+        const replacement = current.cloneNode(false);
+        current.replaceWith(replacement);
+        return replacement;
+    }
+
+    function chartOptions(overrides) {
+        return $.extend(true, {
+            responsive: true,
+            maintainAspectRatio: false,
+            resizeDelay: 150,
+            animation: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 10,
+                        padding: 16,
+                        font: { family: 'Tajawal, Segoe UI, sans-serif' }
+                    }
+                },
+                tooltip: {
+                    bodyFont: { family: 'Tajawal, Segoe UI, sans-serif' },
+                    titleFont: { family: 'Tajawal, Segoe UI, sans-serif' }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { maxRotation: 0, minRotation: 0, font: { family: 'Tajawal, Segoe UI, sans-serif' } },
+                    grid: { color: 'rgba(148, 163, 184, .14)' }
+                },
+                y: {
+                    ticks: { font: { family: 'Tajawal, Segoe UI, sans-serif' } },
+                    grid: { color: 'rgba(148, 163, 184, .14)' },
+                    beginAtZero: true
+                }
+            }
+        }, overrides || {});
+    }
+
+    function getPictureSrc(value) {
+        const normalized = normalizeText(value, '');
+        if (!normalized) {
+            return '';
+        }
+
+        if (normalized.startsWith('data:image/')) {
+            return normalized;
+        }
+
+        if (normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('/')) {
+            return normalized;
+        }
+
+        return `data:image/jpeg;base64,${normalized}`;
+    }
+
+    function canEditTask(task) {
+        if (isAdministrator) {
+            return true;
+        }
+
+        const responsibleUserId = Number(getValue(task, 'responsibleUserId', 'ResponsibleUserId', 0) || 0);
+        if (responsibleUserId > 0 && responsibleUserId === currentUserId) {
+            return true;
+        }
+
+        const assignees = getValue(task, 'assignees', 'Assignees', []);
+        return assignees.some(function (item) {
+            return Number(getValue(item, 'employeeId', 'EmployeeId', 0) || 0) === currentUserId;
+        });
+    }
+
+    function canDeleteTask(task) {
+        if (isAdministrator) {
+            return true;
+        }
+
+        const responsibleUserId = Number(getValue(task, 'responsibleUserId', 'ResponsibleUserId', 0) || 0);
+        return responsibleUserId > 0 && responsibleUserId === currentUserId;
+    }
+
+    async function getJson(url) {
+        const response = await fetch(url, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        return await response.json();
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': requestVerificationToken
+            },
+            body: JSON.stringify(payload)
+        });
+
+        return await response.json();
+    }
+
+    function renderTaskDetailList(containerSelector, items, renderer) {
+        const container = $(containerSelector);
+        container.empty();
+
+        if (!items || !items.length) {
+            container.append(`<li class="text-muted small">${labels.noDataAvailable}</li>`);
+            return;
+        }
+
+        items.forEach(function (item) {
+            container.append(renderer(item));
+        });
+    }
+
+    function setTaskEditorEnabled(enabled) {
+        $('#taskDetailTaskName, #taskDetailStartDate, #taskDetailEndDate, #taskDetailPriority, #taskDetailPercentComplete, #taskDetailNotes')
+            .prop('disabled', !enabled);
+        $('#btnTaskDetailSave').toggleClass('d-none', !enabled);
+    }
+
+    function fillTaskDetailPanel(task) {
+        currentTaskDetail = task;
+
+        const taskName = getValue(task, 'taskName', 'TaskName', '');
+        const phaseName = getValue(task, 'phaseName', 'PhaseName', '');
+        const activityName = getValue(task, 'activityName', 'ActivityName', '');
+        const projectName = getValue(task, 'projectName', 'ProjectName', '');
+        const assignees = getValue(task, 'assignees', 'Assignees', []);
+        const checklistItems = getValue(task, 'checklistItems', 'ChecklistItems', []);
+        const fileLinks = getValue(task, 'fileLinks', 'FileLinks', []);
+
+        $('#taskDetailOffcanvasLabel').text(normalizeText(taskName));
+        $('#taskDetailSubtitle').text(`${normalizeText(phaseName)} / ${normalizeText(activityName)}`);
+        $('#taskDetailProjectName').text(normalizeText(projectName));
+        $('#taskDetailPhaseName').text(normalizeText(phaseName));
+        $('#taskDetailActivityName').text(normalizeText(activityName));
+        $('#taskDetailAssigneeNames').text(assignees.map(function (item) { return normalizeText(getValue(item, 'employeeName', 'EmployeeName', '')); }).join(', ') || '-');
+        $('#taskDetailTaskId').val(getValue(task, 'phaseTaskId', 'PhaseTaskId', 0));
+        $('#taskDetailProjectId').val(getValue(task, 'projectId', 'ProjectId', ''));
+        $('#taskDetailPhaseActivityId').val(getValue(task, 'phaseActivityId', 'PhaseActivityId', 0));
+        $('#taskDetailTaskName').val(taskName || '');
+        $('#taskDetailStartDate').val(getValue(task, 'startDate', 'StartDate') ? String(getValue(task, 'startDate', 'StartDate')).substring(0, 10) : '');
+        $('#taskDetailEndDate').val(getValue(task, 'endDate', 'EndDate') ? String(getValue(task, 'endDate', 'EndDate')).substring(0, 10) : '');
+        $('#taskDetailPriority').val(getValue(task, 'priority', 'Priority', 'Medium'));
+        $('#taskDetailPercentComplete').val(getValue(task, 'percentComplete', 'PercentComplete', 0));
+        $('#taskDetailNotes').val(getValue(task, 'notes', 'Notes', '') || '');
+
+        renderTaskDetailList('#taskDetailChecklist', checklistItems, function (item) {
+            const isCompleted = !!getValue(item, 'isCompleted', 'IsCompleted', false);
+            const iconClass = isCompleted ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted';
+            return `<li><i class="bi ${iconClass}"></i><span>${normalizeText(getValue(item, 'title', 'Title', ''))}</span></li>`;
+        });
+
+        renderTaskDetailList('#taskDetailLinks', fileLinks, function (item) {
+            const fileName = normalizeText(getValue(item, 'fileName', 'FileName', ''), 'Link');
+            const fileUrl = getValue(item, 'fileUrl', 'FileUrl', '#') || '#';
+            return `<li><a href="${fileUrl}" target="_blank" rel="noopener noreferrer">${fileName}</a></li>`;
+        });
+
+        setTaskEditorEnabled(canEditTask(task));
+        $('#btnTaskDetailDelete').toggleClass('d-none', !canDeleteTask(task));
+    }
+
+    function openTaskDetail(projectId, phaseTaskId) {
+        const task = taskDetailLookup[String(phaseTaskId)];
+        if (!task) {
+            Swal.fire({ icon: 'error', title: labels.error, text: labels.noDataAvailable });
+            return;
+        }
+
+        fillTaskDetailPanel(task);
+        taskDetailOffcanvas?.show();
+    }
+
+    async function saveTaskDetail() {
+        if (!currentTaskDetail || !canEditTask(currentTaskDetail)) {
+            return;
+        }
+
+        const taskName = String($('#taskDetailTaskName').val() || '').trim();
+        if (!taskName) {
+            Swal.fire({ icon: 'warning', title: labels.warning, text: labels.taskNameRequired });
+            return;
+        }
+
+        const task = currentTaskDetail;
+        const payload = {
+            phaseTaskId: parseInt($('#taskDetailTaskId').val() || '0', 10),
+            phaseActivityId: parseInt($('#taskDetailPhaseActivityId').val() || '0', 10),
+            projectId: $('#taskDetailProjectId').val() || '',
+            taskName: taskName,
+            startDate: $('#taskDetailStartDate').val() || null,
+            endDate: $('#taskDetailEndDate').val() || null,
+            priority: $('#taskDetailPriority').val() || 'Medium',
+            percentComplete: parseInt($('#taskDetailPercentComplete').val() || '0', 10),
+            notes: $('#taskDetailNotes').val() || null,
+            dependentOnPhaseTaskId: getValue(task, 'dependentOnPhaseTaskId', 'DependentOnPhaseTaskId', null),
+            dependencyType: getValue(task, 'dependencyType', 'DependencyType', null),
+            assignedEmployeeIds: (getValue(task, 'assignees', 'Assignees', []) || []).map(function (item) { return getValue(item, 'employeeId', 'EmployeeId', 0); }),
+            checklistItems: getValue(task, 'checklistItems', 'ChecklistItems', []) || [],
+            fileLinks: getValue(task, 'fileLinks', 'FileLinks', []) || []
+        };
+
+        const result = await postJson(saveTaskUrl, payload);
+        if (result.success) {
+            window.location.reload();
+            return;
+        }
+
+        Swal.fire({ icon: 'error', title: labels.error, text: result.message || labels.error });
+    }
+
+    async function deleteTaskDetail() {
+        if (!currentTaskDetail || !canDeleteTask(currentTaskDetail)) {
+            return;
+        }
+
+        const confirmation = await Swal.fire({
+            icon: 'warning',
+            title: labels.warning,
+            text: labels.deleteConfirmation,
+            showCancelButton: true,
+            confirmButtonText: labels.delete,
+            cancelButtonText: labels.cancel,
+            reverseButtons: isRtl
+        });
+
+        if (!confirmation.isConfirmed) {
+            return;
+        }
+
+        const result = await postJson(deleteTaskUrl, {
+            phaseTaskId: parseInt($('#taskDetailTaskId').val() || '0', 10),
+            projectId: $('#taskDetailProjectId').val() || ''
+        });
+
+        if (result.success) {
+            window.location.reload();
+            return;
+        }
+
+        Swal.fire({ icon: 'error', title: labels.error, text: result.message || labels.error });
+    }
+
+    function parseDate(value) {
+        if (!value) return null;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatDate(value) {
+        const date = parseDate(value);
+        if (!date) return '-';
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function filterAssignments(employeeId, projectId) {
+        return assignments.filter(function (item) {
+            const matchesEmployee = !employeeId || item.EmployeeId === employeeId;
+            const matchesProject = !projectId || String(item.ProjectId).toLowerCase() === String(projectId).toLowerCase();
+            return matchesEmployee && matchesProject;
+        });
+    }
+
+    function getVisibleMembers(projectId) {
+        const scopedAssignments = filterAssignmentsByProject(projectId);
+        const visibleEmployeeIds = new Set(scopedAssignments.map(function (item) { return item.EmployeeId; }));
+
+        if (!projectId) {
+            return teamMembers.slice();
+        }
+
+        return teamMembers.filter(function (member) {
+            return visibleEmployeeIds.has(member.EmployeeId);
+        });
+    }
+
+    function ensureSelectedEmployeeValid() {
+        const visibleMembers = getVisibleMembers(selectedProjectId);
+        if (!visibleMembers.length) {
+            selectedEmployeeId = 0;
+            return;
+        }
+
+        const exists = visibleMembers.some(function (member) { return member.EmployeeId === selectedEmployeeId; });
+        if (exists) {
+            return;
+        }
+
+        const currentVisible = visibleMembers.find(function (member) { return member.EmployeeId === currentUserId; });
+        selectedEmployeeId = currentVisible ? currentVisible.EmployeeId : visibleMembers[0].EmployeeId;
+    }
+
+    function filterAssignmentsByProject(projectId) {
+        return assignments.filter(function (item) {
+            return !projectId || String(item.ProjectId).toLowerCase() === String(projectId).toLowerCase();
+        });
+    }
+
+    function getTaskState(item) {
+        const percent = Number(item.PercentComplete || 0);
+        if (percent >= 100) return 'completed';
+        const endDate = parseDate(item.EndDate);
+        const today = new Date();
+        if (endDate && endDate < new Date(today.getFullYear(), today.getMonth(), today.getDate())) return 'overdue';
+        if (percent > 0) return 'inProgress';
+        return 'notStarted';
+    }
+
+    function getOverview(projectId) {
+        const filteredAssignments = filterAssignmentsByProject(projectId);
+        const projectIds = [...new Set(filteredAssignments.map(x => String(x.ProjectId)))];
+        const employeeIds = [...new Set(filteredAssignments.map(x => x.EmployeeId))];
+        return {
+            totalTasks: filteredAssignments.length,
+            completedTasks: filteredAssignments.filter(x => getTaskState(x) === 'completed').length,
+            inProgressTasks: filteredAssignments.filter(x => getTaskState(x) === 'inProgress').length,
+            overdueTasks: filteredAssignments.filter(x => getTaskState(x) === 'overdue').length,
+            projectCount: projectId ? (filteredAssignments.length > 0 ? 1 : 0) : (projectIds.length || projects.length),
+            memberCount: employeeIds.length || teamMembers.length
+        };
+    }
+
+    function buildCompletedSeries(employeeId, projectId) {
+        const source = filterAssignments(employeeId, projectId).filter(x => getTaskState(x) === 'completed');
+        const map = new Map();
+        source.forEach(function (item) {
+            const date = parseDate(item.EndDate) || parseDate(item.StartDate);
+            if (!date) return;
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            map.set(key, (map.get(key) || 0) + 1);
+        });
+
+        const orderedKeys = Array.from(map.keys()).sort();
+        return {
+            labels: orderedKeys.map(function (key) {
+                const parts = key.split('-');
+                const date = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+                return date.toLocaleDateString(isRtl ? 'ar' : 'en', { month: 'short', year: 'numeric' });
+            }),
+            values: orderedKeys.map(function (key) { return map.get(key) || 0; })
+        };
+    }
+
+    function buildStatusSeries(employeeId, projectId) {
+        const source = filterAssignments(employeeId, projectId);
+        return {
+            completed: source.filter(x => getTaskState(x) === 'completed').length,
+            inProgress: source.filter(x => getTaskState(x) === 'inProgress').length,
+            notStarted: source.filter(x => getTaskState(x) === 'notStarted').length,
+            overdue: source.filter(x => getTaskState(x) === 'overdue').length
+        };
+    }
+
+    function buildEmployeeProgressSeries(employeeId, projectId) {
+        const source = filterAssignments(employeeId, projectId)
+            .slice()
+            .sort(function (a, b) {
+                return (parseDate(a.EndDate) || parseDate(a.StartDate) || new Date()) - (parseDate(b.EndDate) || parseDate(b.StartDate) || new Date());
+            });
+
+        return {
+            labels: source.map(function (item, index) { return getTaskDisplayName(item, index); }),
+            values: source.map(function (item) { return Number(item.PercentComplete || 0); })
+        };
+    }
+
+    function buildProjectsSeries(employeeId, projectId) {
+        const source = filterAssignments(employeeId, projectId);
+        const map = new Map();
+        source.forEach(function (item, index) {
+            const key = getProjectDisplayName(item.ProjectName, index + 1);
+            map.set(key, (map.get(key) || 0) + 1);
+        });
+
+        const entries = Array.from(map.entries()).sort(function (a, b) { return b[1] - a[1]; });
+        return {
+            labels: entries.map(x => x[0]),
+            values: entries.map(x => x[1])
+        };
+    }
+
+    function getSelectedEmployee() {
+        return getVisibleMembers(selectedProjectId).find(x => x.EmployeeId === selectedEmployeeId) || null;
+    }
+
+    function renderMembers() {
+        const container = $('#taskDashboardMembers');
+        container.empty();
+        const visibleMembers = getVisibleMembers(selectedProjectId);
+
+        if (!visibleMembers.length) {
+            container.append(`<div class="text-muted small p-3">${labels.noDataAvailable}</div>`);
+            return;
+        }
+
+        visibleMembers.forEach(function (member) {
+            const memberTasks = filterAssignments(member.EmployeeId, selectedProjectId);
+            const completedTasks = memberTasks.filter(x => getTaskState(x) === 'completed').length;
+            const safeEmployeeName = normalizeText(member.EmployeeName);
+            const safePosition = normalizeText(member.PositionName);
+            const pictureSrc = getPictureSrc(member.PictureBase64);
+            const picture = pictureSrc
+                ? `<img src="${pictureSrc}" alt="${safeEmployeeName}" class="task-member-avatar-img" />`
+                : '<div class="task-member-avatar-placeholder"><i class="bi bi-person"></i></div>';
+            const item = $(
+                `<button type="button" class="task-member-item ${member.EmployeeId === selectedEmployeeId ? 'active' : ''}">
+                    <span class="task-member-avatar">${picture}</span>
+                    <span class="task-member-content">
+                        <span class="task-member-name">${safeEmployeeName}</span>
+                        <span class="task-member-role">${safePosition}</span>
+                        <span class="task-member-meta">${completedTasks} ${labels.completed} / ${memberTasks.length} ${labels.tasks}</span>
+                    </span>
+                </button>`);
+            item.on('click', function () {
+                selectedEmployeeId = member.EmployeeId;
+                refreshDashboard();
+            });
+            container.append(item);
+        });
+    }
+
+    function renderOverview() {
+        const overview = getOverview(selectedProjectId);
+        const visibleMembers = getVisibleMembers(selectedProjectId);
+        $('#summaryTotalTasks').text(overview.totalTasks);
+        $('#summaryCompletedTasks').text(overview.completedTasks);
+        $('#summaryInProgressTasks').text(overview.inProgressTasks);
+        $('#summaryOverdueTasks').text(overview.overdueTasks);
+        $('#taskDashboardProjectCount').text(overview.projectCount);
+        $('#taskDashboardMemberCount').text(overview.memberCount);
+        $('#taskDashboardTaskCount').text(overview.totalTasks);
+        $('#teamMembersBadge').text(visibleMembers.length);
+    }
+
+    function renderSelectedEmployee() {
+        const member = getSelectedEmployee();
+        const employeeAssignments = filterAssignments(selectedEmployeeId, selectedProjectId);
+        const completedTasks = employeeAssignments.filter(x => getTaskState(x) === 'completed').length;
+        const projectsCount = new Set(employeeAssignments.map(x => String(x.ProjectId))).size;
+        const completionRate = employeeAssignments.length === 0 ? 0 : Math.round((completedTasks / employeeAssignments.length) * 100);
+
+        $('#selectedEmployeeName').text(normalizeText(member?.EmployeeName));
+        $('#selectedEmployeePosition').text(normalizeText(member?.PositionName));
+        $('#selectedEmployeeProjects').text(`${projectsCount} Projects`);
+        $('#selectedEmployeeCompletion').text(`${completionRate}%`);
+
+        const pictureSrc = getPictureSrc(member?.PictureBase64);
+        if (pictureSrc) {
+            $('#selectedEmployeeAvatar').html(`<img src="${pictureSrc}" alt="${normalizeText(member.EmployeeName)}" class="employee-hero-avatar-img" />`);
+        } else {
+            $('#selectedEmployeeAvatar').html('<i class="bi bi-person-circle"></i>');
+        }
+    }
+
+    function renderTasksTable() {
+        const body = $('#taskAssignmentsTableBody');
+        const source = filterAssignments(selectedEmployeeId, selectedProjectId);
+        body.empty();
+
+        if (!source.length) {
+            body.append(`<tr><td colspan="5" class="text-center text-muted py-4">${labels.noDataAvailable}</td></tr>`);
+            return;
+        }
+
+        source
+            .slice()
+            .sort(function (a, b) {
+                return (parseDate(b.EndDate) || parseDate(b.StartDate) || new Date()) - (parseDate(a.EndDate) || parseDate(a.StartDate) || new Date());
+            })
+            .forEach(function (item, index) {
+                const row = $(`
+                    <tr class="task-assignment-row" data-project-id="${item.ProjectId}" data-task-id="${item.PhaseTaskId}">
+                        <td>
+                            <div class="fw-semibold">${getTaskDisplayName(item, index)}</div>
+                            <div class="small text-muted">${getPhaseDisplayName(item.PhaseName)} / ${getActivityDisplayName(item.ActivityName)}</div>
+                        </td>
+                        <td>${getProjectDisplayName(item.ProjectName, index + 1)}</td>
+                        <td>${formatDate(item.StartDate)}</td>
+                        <td>${formatDate(item.EndDate)}</td>
+                        <td>
+                            <div class="progress table-progress-wrap">
+                                <div class="progress-bar" role="progressbar" style="width:${item.PercentComplete}%;" aria-valuenow="${item.PercentComplete}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <div class="small mt-1">${item.PercentComplete}%</div>
+                        </td>
+                    </tr>`);
+
+                row.on('click', function () {
+                    openTaskDetail(item.ProjectId, item.PhaseTaskId);
+                });
+
+                body.append(row);
+            });
+    }
+
+    function renderCharts() {
+        const completedSeries = buildCompletedSeries(selectedEmployeeId, selectedProjectId);
+        const statusSeries = buildStatusSeries(selectedEmployeeId, selectedProjectId);
+        const progressSeries = buildEmployeeProgressSeries(selectedEmployeeId, selectedProjectId);
+        const projectsSeries = buildProjectsSeries(selectedEmployeeId, selectedProjectId);
+
+        tasksCompletedChart?.destroy();
+        taskStatusChart?.destroy();
+        employeeProgressChart?.destroy();
+        tasksByProjectsChart?.destroy();
+
+        tasksCompletedChart = new Chart(getFreshCanvas('tasksCompletedChart'), {
+            type: 'line',
+            data: {
+                labels: completedSeries.labels,
+                datasets: [{
+                    label: labels.completedTasks,
+                    data: completedSeries.values,
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14,165,233,.15)',
+                    tension: .35,
+                    fill: true
+                }]
+            },
+            options: chartOptions({
+                plugins: { legend: { display: false } },
+                elements: { point: { radius: 3, hoverRadius: 4 } }
+            })
+        });
+
+        taskStatusChart = new Chart(getFreshCanvas('taskStatusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [labels.completed, labels.inProgress, labels.notStarted, labels.overdue],
+                datasets: [{
+                    data: [statusSeries.completed, statusSeries.inProgress, statusSeries.notStarted, statusSeries.overdue],
+                    backgroundColor: ['#10b981', '#f59e0b', '#94a3b8', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: chartOptions({
+                cutout: '72%',
+                scales: {}
+            })
+        });
+
+        employeeProgressChart = new Chart(getFreshCanvas('employeeProgressChart'), {
+            type: 'line',
+            data: {
+                labels: progressSeries.labels.map(function (label) { return normalizeText(label); }),
+                datasets: [{
+                    label: labels.percentComplete,
+                    data: progressSeries.values,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139,92,246,.12)',
+                    tension: .4,
+                    fill: true
+                }]
+            },
+            options: chartOptions({
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 8,
+                            callback: function (value) {
+                                const label = this.getLabelForValue(value);
+                                return label.length > 22 ? label.substring(0, 22) + '…' : label;
+                            }
+                        },
+                        grid: { display: false }
+                    },
+                    y: { beginAtZero: true, max: 100, grid: { color: 'rgba(148, 163, 184, .14)' } }
+                }
+            })
+        });
+
+        tasksByProjectsChart = new Chart(getFreshCanvas('tasksByProjectsChart'), {
+            type: 'bar',
+            data: {
+                labels: projectsSeries.labels.map(function (label) { return normalizeText(label); }),
+                datasets: [{
+                    label: labels.tasks,
+                    data: projectsSeries.values,
+                    backgroundColor: '#2563eb',
+                    borderRadius: 8
+                }]
+            },
+            options: chartOptions({
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(148, 163, 184, .14)' } },
+                    y: { grid: { display: false } }
+                }
+            })
+        });
+    }
+
+    function refreshDashboard() {
+        ensureSelectedEmployeeValid();
+        renderMembers();
+        renderOverview();
+        renderSelectedEmployee();
+        renderTasksTable();
+        renderCharts();
+    }
+
+    $('#btnTaskDetailSave').on('click', saveTaskDetail);
+    $('#btnTaskDetailDelete').on('click', deleteTaskDetail);
+    taskDetailOffcanvasElement?.addEventListener('hidden.bs.offcanvas', function () {
+        currentTaskDetail = null;
+    });
+
+    $('#taskDashboardProjectFilter').on('change', function () {
+        selectedProjectId = $(this).val() || '';
+        syncProjectTabs();
+        refreshDashboard();
+    });
+
+    function syncProjectTabs() {
+        $('#taskDashboardProjectTabs .task-project-tab').removeClass('active');
+        $('#taskDashboardProjectTabs .task-project-tab').each(function () {
+            const projectId = $(this).data('project-id') || '';
+            if (String(projectId).toLowerCase() === String(selectedProjectId).toLowerCase()) {
+                $(this).addClass('active');
+            }
+        });
+        $('#taskDashboardProjectFilter').val(selectedProjectId);
+    }
+
+    $('#taskDashboardProjectTabs').on('click', '.task-project-tab', function () {
+        selectedProjectId = String($(this).data('project-id') || '');
+        syncProjectTabs();
+        refreshDashboard();
+    });
+
+    syncProjectTabs();
+    refreshDashboard();
+});
+</script>
+<style>
+.tasks-filter-card,
+.task-people-card,
+.task-summary-card,
+.employee-hero-card,
+.tasks-chart-card,
+.tasks-table-card {
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .05) !important;
+}
+
+.tasks-filter-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.task-project-tabs {
+    overflow-x: auto;
+}
+
+.task-project-tab {
+    border-radius: 999px;
+    border: 1px solid #dbe4f0;
+    background: #fff;
+    color: #334155;
+    font-weight: 700;
+    padding-inline: .95rem;
+}
+
+.task-project-tab.active,
+.task-project-tab:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    color: #fff;
+    border-color: transparent;
+}
+
+.task-dashboard-info-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.task-dashboard-info-strip > div,
+.task-summary-card,
+.employee-hero-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: #fff;
+}
+
+.task-dashboard-info-strip > div {
+    padding: .85rem 1rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.task-dashboard-info-label,
+.task-summary-label {
+    color: #64748b;
+    font-size: .82rem;
+    font-weight: 600;
+}
+
+.task-dashboard-info-value,
+.task-summary-value {
+    color: #0f172a;
+    font-size: 1.45rem;
+    font-weight: 700;
+}
+
+.task-member-list {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    max-height: 74vh;
+    overflow-y: auto;
+    padding-inline-end: .25rem;
+}
+
+.task-member-item {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: #fff;
+    padding: .85rem;
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    text-align: start;
+    transition: all .2s ease;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, .03);
+}
+
+.task-member-item:hover,
+.task-member-item.active {
+    border-color: #cbd5e1;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    transform: translateY(-1px);
+}
+
+.task-member-item.active {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 .18rem rgba(59, 130, 246, .10);
+}
+
+.task-member-avatar,
+.employee-hero-avatar {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    color: #475569;
+    flex-shrink: 0;
+}
+
+.task-member-avatar-img,
+.employee-hero-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.task-member-avatar-placeholder,
+.employee-hero-avatar i {
+    font-size: 1.35rem;
+}
+
+.task-member-content {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    min-width: 0;
+}
+
+.task-member-name {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.task-member-role,
+.task-member-meta,
+.employee-hero-subtitle {
+    color: #64748b;
+    font-size: .84rem;
+}
+
+.task-summary-card {
+    padding: 1.1rem 1rem;
+    min-height: 106px;
+}
+
+.task-summary-primary { border-top: 4px solid #2563eb; }
+.task-summary-success { border-top: 4px solid #10b981; }
+.task-summary-warning { border-top: 4px solid #f59e0b; }
+.task-summary-danger { border-top: 4px solid #ef4444; }
+
+.employee-hero-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.employee-hero-avatar {
+    width: 4.25rem;
+    height: 4.25rem;
+    font-size: 2rem;
+}
+
+.employee-hero-title,
+.dashboard-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: .85rem;
+}
+
+.employee-hero-metrics {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-top: .35rem;
+}
+
+.dashboard-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: .8rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.chart-panel {
+    position: relative;
+    width: 100%;
+}
+
+.chart-panel-lg {
+    height: 310px;
+}
+
+.chart-panel-md {
+    height: 280px;
+}
+
+.chart-panel canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.table {
+    --bs-table-striped-bg: #f8fafc;
+}
+
+.table thead th {
+    color: #475569;
+    font-size: .86rem;
+    font-weight: 700;
+    border-bottom-width: 1px;
+    white-space: nowrap;
+}
+
+.table tbody td {
+    vertical-align: middle;
+}
+
+.task-assignment-row {
+    cursor: pointer;
+}
+
+.task-assignment-row:hover {
+    background: #f8fbff;
+}
+
+.table-progress-wrap {
+    height: .55rem;
+    min-width: 120px;
+}
+
+.table-progress-wrap .progress-bar {
+    background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+}
+
+.task-detail-offcanvas {
+    width: min(620px, 95vw);
+}
+
+.task-detail-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.task-detail-summary-item,
+.task-detail-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: #fff;
+    padding: 1rem;
+}
+
+.task-detail-summary-label,
+.task-detail-section-title {
+    display: block;
+    color: #64748b;
+    font-size: .82rem;
+    font-weight: 600;
+    margin-bottom: .35rem;
+}
+
+.task-detail-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+}
+
+.task-detail-list li {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    color: #0f172a;
+}
+
+.task-detail-list a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.task-detail-list a:hover {
+    text-decoration: underline;
+}
+
+@@media (max-width: 1199.98px) {
+    .task-dashboard-info-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@@media (max-width: 767.98px) {
+    .task-dashboard-info-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .employee-hero-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .task-detail-summary-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+}

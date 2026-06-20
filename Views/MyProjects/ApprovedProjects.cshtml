@@ -1,0 +1,830 @@
+@model ProjectManagementApp.Models.MyProjectsApprovedPageViewModel
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+@{
+    ViewData["Title"] = ("حالة المشروع", "Project Status");
+    var isRtl = Localization.IsRtl();
+    var departments = Model.Projects
+        .Where(x => !string.IsNullOrWhiteSpace(x.DepartmentName))
+        .Select(x => x.DepartmentName!)
+        .Distinct()
+        .OrderBy(x => x)
+        .ToList();
+    var sections = Model.Projects
+        .Where(x => !string.IsNullOrWhiteSpace(x.SectionNames))
+        .SelectMany(x => (x.SectionNames ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).Select(v => v.Trim()))
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Distinct()
+        .OrderBy(x => x)
+        .ToList();
+
+
+
+    string GetProjectTypeClass(string? projectType)
+    {
+        var normalized = (projectType ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Contains("transform")) return "board-status-transformational";
+        if (normalized.Contains("strategic")) return "board-status-strategic";
+        return "board-status-operational";
+    }
+
+    string T(string ar, string en) => isRtl ? ar : en;
+}
+
+@section SubbarTitle {
+    <h5 class="fw-bold mb-0" style="color: var(--app-text);">@T("حالة المشروع", "Project Status")</h5>
+}
+
+@section SubbarActions {
+     <a class="btn btn-primary rounded-pill px-4 py-2 shadow-sm fw-bold d-inline-flex align-items-center gap-2" style="background: var(--app-accent); border: none;" href="@Url.Action("Tasks", "MyProjects")">
+         <i class="bi bi-list-task"></i> @Localization.GetString("Tasks")
+     </a>
+     <button class="btn btn-primary rounded-pill px-4 py-2 shadow-sm fw-bold d-inline-flex align-items-center gap-2" style="background: var(--app-primary); border: none;" onclick="openProjectModal()">
+         <i class="bi bi-plus-lg"></i> @T("إضافة مشروع", "Add Project")
+     </button>
+}
+
+<div class="container-fluid mb-4 mt-2">
+
+    <!-- Hero Cards -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card p-4 border-0 h-100 hero-card-primary shadow-lg" style="border-radius: 24px;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="d-flex align-items-center mb-3 gap-2">
+                            <i class="bi bi-lightbulb text-white fs-5"></i>
+                            <h5 class="fw-bold mb-0 text-white">@T("المشاريع المعتمدة", "Approved Projects")</h5>
+                        </div>
+                        <h2 class="display-5 fw-bolder mb-2 text-white">@Model.Projects.Count(p => p.StatusId == 1 || p.StatusId == 4 || p.StatusId == null)</h2>
+                        <p class="text-white opacity-75 small mb-0">@T("إجمالي المشاريع المعتمدة والنشطة", "Total Approved & Active Projects")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-4 border-0 h-100 shadow-lg" style="border-radius: 24px; background: #00d197;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="d-flex align-items-center mb-3 gap-2">
+                            <i class="bi bi-check2-circle text-white fs-5"></i>
+                            <h5 class="fw-bold mb-0 text-white">@T("المشاريع المنتهية", "Completed Projects")</h5>
+                        </div>
+                        <h2 class="display-5 fw-bolder mb-2 text-white">@Model.Projects.Count(p => p.StatusId == 2)</h2>
+                        <p class="text-white opacity-75 small mb-0">@T("إجمالي المشاريع التي تم إنجازها", "Total Completed Projects")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card p-4 border-0 h-100 hero-card-accent shadow-lg" style="border-radius: 24px;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="d-flex align-items-center mb-3 gap-2">
+                            <i class="bi bi-x-octagon text-white fs-5"></i>
+                            <h5 class="fw-bold mb-0 text-white">@T("مشاريع ملغية", "Canceled Projects")</h5>
+                        </div>
+                        <h2 class="display-5 fw-bolder mb-2 text-white">@Model.Projects.Count(p => p.StatusId == 3)</h2>
+                        <p class="text-white opacity-75 small mb-0">@T("إجمالي المشاريع التي تم إلغاؤها", "Total Canceled Projects")</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="app-content">
+    <div class="container-fluid">
+        <div class="board-shell">
+            <div class="monday-toolbar">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    @if (Model.IsAdministrator)
+                    {
+                        <button class="btn text-white px-3 fw-bold shadow-sm" style="background-color: #0073ea; border: none; border-radius: 4px;" onclick="openProjectModal()">
+                            @T("إضافة مشروع", "Add Project")
+                        </button>
+                    }
+                    <div class="monday-toolbar-divider d-none d-md-block"></div>
+                    
+                    <div class="monday-search-wrap">
+                        <i class="bi bi-search monday-search-icon"></i>
+                        <input type="text" id="mondaySearchInput" class="monday-search-input" placeholder="@T("بحث", "Search")" />
+                    </div>
+
+                    <div class="dropdown">
+                        <button class="btn monday-tool-btn dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <i class="bi bi-funnel"></i> @T("تصفية", "Filter")
+                        </button>
+                        <div class="dropdown-menu p-3 shadow-lg border-0" style="width: 260px; border-radius: 8px;">
+                            <label class="form-label small text-muted mb-1">@Localization.GetString("Department")</label>
+                            <select id="filterDepartment" class="form-select form-select-sm mb-3">
+                                <option value="">@T("الكل", "All")</option>
+                                @foreach (var department in departments) { <option value="@department">@department</option> }
+                            </select>
+                            
+                            <label class="form-label small text-muted mb-1">@Localization.GetString("Section")</label>
+                            <select id="filterSection" class="form-select form-select-sm mb-3">
+                                <option value="">@T("الكل", "All")</option>
+                                @foreach (var sectionName in sections) { <option value="@sectionName">@sectionName</option> }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="dropdown">
+                        <button class="btn monday-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <i class="bi bi-arrow-down-up"></i> @T("فرز", "Sort")
+                        </button>
+                        <div class="dropdown-menu p-3 shadow-lg border-0" style="width: 240px; border-radius: 8px;">
+                            <label class="form-label small text-muted mb-1">@T("اختر العمود", "Choose column")</label>
+                            <select id="sortColumn" class="form-select form-select-sm mb-2">
+                                <option value="1">@Localization.GetString("ProjectName")</option>
+                                <option value="4">@T("الأولوية", "Priority")</option>
+                                <option value="5">@T("حالة المشروع", "Project Status")</option>
+                                <option value="6">@T("الميزانية", "Budget")</option>
+                                <option value="8">@Localization.GetString("CurrentProgress")</option>
+                            </select>
+                            <select id="sortDirection" class="form-select form-select-sm mb-3">
+                                <option value="asc">@T("تصاعدي", "Ascending")</option>
+                                <option value="desc">@T("تنازلي", "Descending")</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="dropdown">
+                        <button class="btn monday-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <i class="bi bi-eye-slash"></i> @T("إخفاء", "Hide")
+                        </button>
+                        <div class="dropdown-menu p-3 shadow-lg border-0" style="width: 220px; border-radius: 8px;">
+                            <h6 class="fs-6 mb-3">@T("عرض الأعمدة", "Display columns")</h6>
+                            <div class="monday-columns-list">
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="1" checked><label class="form-check-label">@Localization.GetString("ProjectName")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="2" checked><label class="form-check-label">@Localization.GetString("ProjectType")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="3" checked><label class="form-check-label">@Localization.GetString("Section")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="4" checked><label class="form-check-label">@T("الأولوية", "Priority")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="5" checked><label class="form-check-label">@T("حالة المشروع", "Project Status")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="6" checked><label class="form-check-label">@T("الميزانية", "Budget")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="7" checked><label class="form-check-label">@Localization.GetString("Responsible")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="8" checked><label class="form-check-label">@Localization.GetString("CurrentProgress")</label></div>
+                                <div class="form-check mb-2"><input class="form-check-input col-toggle" type="checkbox" value="9" checked><label class="form-check-label">@Localization.GetString("StartDate")</label></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dropdown">
+                        <button class="btn monday-tool-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                            <i class="bi bi-layout-sidebar"></i> @T("مجموعات", "Group by")
+                        </button>
+                        <div class="dropdown-menu p-3 shadow-lg border-0" style="width: 240px; border-radius: 8px;">
+                            <label class="form-label small text-muted mb-1">@T("تجميع العناصر حسب", "Group items by")</label>
+                            <select id="groupByColumn" class="form-select form-select-sm mb-2">
+                                <option value="">@T("بدون تجميع", "Clear")</option>
+                                <option value="2">@Localization.GetString("ProjectType")</option>
+                                <option value="4">@T("الأولوية", "Priority")</option>
+                                <option value="5">@T("حالة المشروع", "Project Status")</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="board-table-wrap table-responsive mt-3">
+                <table id="approvedProjectsTable" class="table board-table align-middle w-100 mb-0">
+                    <thead>
+                        <tr>
+                            <th class="board-col-select" style="width: 40px;"></th>
+                            <th>@Localization.GetString("ProjectName")</th>
+                            <th>@Localization.GetString("ProjectType")</th>
+                            <th>@Localization.GetString("Section")</th>
+                            <th>@T("الأولوية", "Priority")</th>
+                            <th>@T("حالة المشروع", "Project Status")</th>
+                            <th>@T("الميزانية", "Budget")</th>
+                            <th>@Localization.GetString("Responsible")</th>
+                            <th>@Localization.GetString("CurrentProgress")</th>
+                            <th>@Localization.GetString("StartDate")</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Projects)
+                        {
+                            <tr data-department="@item.DepartmentName" data-sections="@item.SectionNames">
+                                <td class="board-col-select"></td>
+                                <td>
+                                    <div class="board-item-cell d-flex align-items-center gap-3">
+                                        <div class="app-row-icon d-flex align-items-center justify-content-center flex-shrink-0" style="width:46px;height:46px;background:linear-gradient(135deg, var(--app-primary), var(--app-primary-dark));border-radius:14px;color:#fff;">
+                                            <span class="fw-bold fs-5">@(string.IsNullOrWhiteSpace(item.ProjectName) ? "P" : item.ProjectName.Substring(0, 1))</span>
+                                        </div>
+                                        <div>
+                                            <div class="board-item-title">@item.ProjectName</div>
+                                            <div class="board-item-subtitle">@T("مشروع معتمد", "Approved Project")</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="board-status-pill @GetProjectTypeClass(item.ProjectTypeText)">@(string.IsNullOrWhiteSpace(item.ProjectTypeText) ? "-" : item.ProjectTypeText)</span>
+                                </td>
+                                <td>
+                                    <div class="board-text-clamp">@(string.IsNullOrWhiteSpace(item.SectionNames) ? "-" : item.SectionNames)</div>
+                                </td>
+                                <td>
+                                    @if (item.Priority == 1) { <span class="badge bg-secondary">@T("منخفضة", "Low")</span> }
+                                    else if (item.Priority == 2) { <span class="badge bg-info text-dark">@T("متوسطة", "Medium")</span> }
+                                    else if (item.Priority == 3) { <span class="badge bg-warning text-dark">@T("عالية", "High")</span> }
+                                    else if (item.Priority == 4) { <span class="badge bg-danger">@T("حرجة", "Critical")</span> }
+                                    else { <span class="text-muted">-</span> }
+                                </td>
+                                <td>
+                                    @if (item.HealthStatus == 1) { <span class="badge bg-success">🟢 @T("ممتاز", "Excellent")</span> }
+                                    else if (item.HealthStatus == 2) { <span class="badge bg-warning text-dark">🟡 @T("يحتاج متابعة", "Needs Follow-up")</span> }
+                                    else if (item.HealthStatus == 3) { <span class="badge bg-danger">🔴 @T("حرج", "Critical")</span> }
+                                    else { <span class="text-muted">-</span> }
+                                </td>
+                                <td>
+                                    <span class="text-muted small">@(item.PlannedBudget?.ToString("N0") ?? "-")</span>
+                                </td>
+                                <td>
+                                    <div class="board-person-cell">
+                                        <div class="d-flex align-items-center avatar-group" style="margin-left: 10px;">
+                                            <span class="board-avatar" tabindex="0" style="z-index: 10; border: 2px solid white; cursor: pointer;" data-name="@item.ResponsibleUserName" data-photo="" data-role="@T("مدير المشروع", "Project Manager")" data-department="@item.DepartmentName" data-email="" onclick="showUserModal(this)">
+                                                <i class="bi bi-person-circle fs-5 text-secondary"></i>
+                                            </span>
+                                            @{
+                                                int zIndex = 9;
+                                                foreach (var tm in item.TeamMembers.Take(4))
+                                                {
+                                                    if (!string.IsNullOrEmpty(tm.Photo))
+                                                    {
+                                                        <img src="@tm.Photo" alt="@tm.EmployeeName" class="board-avatar" tabindex="0" style="z-index: @zIndex; border: 2px solid white; margin-right: -10px; width: 32px; height: 32px; object-fit: cover; cursor: pointer;" data-name="@tm.EmployeeName" data-photo="@tm.Photo" data-role="@T("عضو الفريق", "Team Member")" data-department="@tm.DepartmentName" data-email="@tm.Email" onclick="showUserModal(this)" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="board-avatar" tabindex="0" style="z-index: @zIndex; border: 2px solid white; margin-right: -10px; cursor: pointer;" data-name="@tm.EmployeeName" data-photo="" data-role="@T("عضو الفريق", "Team Member")" data-department="@tm.DepartmentName" data-email="@tm.Email" onclick="showUserModal(this)">
+                                                            <i class="bi bi-person-circle fs-5 text-secondary"></i>
+                                                        </span>
+                                                    }
+                                                    zIndex--;
+                                                }
+                                                if (item.TeamMembers.Count > 4)
+                                                {
+                                                    <span class="board-avatar bg-light text-dark" title="@T("المزيد", "More")" style="z-index: @zIndex; border: 2px solid white; margin-right: -10px; font-size: 11px;">+@(item.TeamMembers.Count - 4)</span>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="board-progress-cell">
+                                        <span class="board-progress-label">@item.CurrentProgressPercent.ToString("N0")% @T("مكتمل", "completed")</span>
+                                        <div class="board-progress-track">
+                                            <div class="board-progress-fill" style="width:@Math.Min(100m, Math.Max(0m, item.CurrentProgressPercent))%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="board-date-pill">@(item.StartDate?.ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture) ?? "-")</span>
+                                </td>
+                                <td class="text-nowrap text-end pe-4">
+                                    <div class="dropdown">
+                                        <button class="board-action-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            <i class="bi bi-three-dots"></i>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 board-action-dropdown" style="border-radius: 12px; min-width: 150px;">
+                                            <li><a class="dropdown-item py-2 d-flex align-items-center gap-2" href="@Url.Action("Manage", "MyProjects", new { projectId = item.ProjectId })"><i class="bi bi-gear text-secondary"></i> <span>@T("إدارة", "Manage")</span></a></li>
+                                            @if (Model.IsAdministrator || (item.ResponsibleUserId == ViewBag.CurrentUser?.EmployeeId))
+                                            {
+                                                var teamJson = System.Text.Json.JsonSerializer.Serialize(item.TeamMembers.Select(x => new { id = x.EmployeeId, text = x.EmployeeName, photo = x.Photo }));
+                                                <li><a class="dropdown-item py-2 d-flex align-items-center gap-2" href="#" data-team="@teamJson" onclick="editProject('@item.ProjectId', '@Uri.EscapeDataString(item.ProjectName ?? "")', '@Uri.EscapeDataString(item.ProjectTypeText ?? "")', '@item.DepartmentCode', '@Uri.EscapeDataString(item.DepartmentName ?? "")', '@item.ResponsibleUserId', '@Uri.EscapeDataString(item.ResponsibleUserName ?? "")', '@(item.StartDate?.ToString("yyyy-MM-dd"))', '@(item.EndDate?.ToString("yyyy-MM-dd"))', '@Uri.EscapeDataString(item.ProjectDescription ?? "")', '@item.Priority', '@item.HealthStatus', '@item.PlannedBudget', '@item.ActualCost', '@item.SponsorUserId', '@(item.Archived ? "true" : "false")', '@item.StatusId', this); return false;"><i class="bi bi-pencil text-primary"></i> <span>@T("تعديل", "Edit")</span></a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><a class="dropdown-item py-2 text-danger d-flex align-items-center gap-2" href="#" onclick="deleteProject('@item.ProjectId', '@Uri.EscapeDataString(item.ProjectName ?? "")'); return false;"><i class="bi bi-trash text-danger"></i> <span>@T("حذف", "Delete")</span></a></li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Modal -->
+<div class="modal fade" id="projectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
+            <div class="modal-header border-0 pb-0" style="background: rgba(255,255,255,0.9); backdrop-filter: blur(10px);">
+                <h5 class="modal-title fw-bold" id="projectModalTitle">@T("إضافة مشروع", "Add Project")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 pt-3">
+                <form id="projectForm">
+                    <input type="hidden" id="projectFormId" name="ProjectId" value="" />
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("اسم المشروع", "Project Name") <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control rounded-3" id="projectFormName" name="ProjectName" required style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("وصف المشروع", "Project Description")</label>
+                            <textarea class="form-control rounded-3" id="projectFormDescription" name="ProjectDescription" rows="2" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;"></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("نوع المشروع", "Project Type")</label>
+                            <select class="form-select rounded-3" id="projectFormType" name="ProjectType" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;">
+                                <option value="">@T("اختر...", "Select...")</option>
+                                <option value="تشغيلي">@T("تشغيلي", "Operational")</option>
+                                <option value="استراتيجي">@T("استراتيجي", "Strategic")</option>
+                                <option value="تحولي">@T("تحولي", "Transformational")</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("الأولوية", "Priority")</label>
+                            <select class="form-select rounded-3" id="projectFormPriority" name="Priority" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;">
+                                <option value="">@T("اختر...", "Select...")</option>
+                                <option value="1">@T("منخفضة", "Low")</option>
+                                <option value="2">@T("متوسطة", "Medium")</option>
+                                <option value="3">@T("عالية", "High")</option>
+                                <option value="4">@T("حرجة", "Critical")</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("حالة المشروع", "Project Status")</label>
+                            <select class="form-select rounded-3" id="projectFormHealthStatus" name="HealthStatus" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;">
+                                <option value="">@T("اختر...", "Select...")</option>
+                                <option value="1">🟢 @T("ممتاز", "Excellent")</option>
+                                <option value="2">🟡 @T("يحتاج متابعة", "Needs Follow-up")</option>
+                                <option value="3">🔴 @T("حرج", "Critical")</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("الإدارة التابع لها", "Department")</label>
+                            <input type="text" class="form-control rounded-3" id="projectFormDepartmentName" name="DepartmentName" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                            <input type="hidden" id="projectFormDepartmentCode" name="DepartmentCode" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("مدير المشروع (المسؤول)", "Project Manager (Responsible)")</label>
+                            <select class="form-select select2-employee" id="projectFormResponsibleUserId" name="ResponsibleUserId" style="width: 100%;">
+                                <option value="">@T("ابحث عن موظف...", "Search employee...")</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("فريق المشروع", "Project Team")</label>
+                            <select class="form-select select2-employee" id="projectFormTeamMembers" name="TeamMemberIds" multiple="multiple" style="width: 100%;">
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("الراعي", "Sponsor")</label>
+                            <select class="form-select select2-employee" id="projectFormSponsorUserId" name="SponsorUserId" style="width: 100%;">
+                                <option value="">@T("ابحث عن موظف...", "Search employee...")</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("الميزانية المخططة", "Planned Budget")</label>
+                            <input type="number" step="0.01" class="form-control rounded-3" id="projectFormPlannedBudget" name="PlannedBudget" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("التكلفة الفعلية", "Actual Cost")</label>
+                            <input type="number" step="0.01" class="form-control rounded-3" id="projectFormActualCost" name="ActualCost" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("تاريخ البداية", "Start Date")</label>
+                            <input type="date" class="form-control rounded-3" id="projectFormStartDate" name="StartDate" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-muted small mb-1">@T("تاريخ النهاية", "End Date")</label>
+                            <input type="date" class="form-control rounded-3" id="projectFormEndDate" name="EndDate" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.6rem 1rem;" />
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end pb-2">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="projectFormArchived" name="Archived">
+                                <label class="form-check-label fw-bold text-muted small ms-2" for="projectFormArchived">@T("أرشفة المشروع", "Archive Project")</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0 px-4 pb-4">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">@Localization.GetString("Cancel")</button>
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSaveProject" onclick="saveProject()">@Localization.GetString("Save")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+$(function () {
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable.id !== 'approvedProjectsTable') {
+            return true;
+        }
+
+        const row = settings.aoData[dataIndex]?.nTr;
+        const departmentFilter = $('#filterDepartment').val();
+        const sectionFilter = $('#filterSection').val();
+        const departmentValue = row ? ($(row).attr('data-department') || '') : '';
+        const sectionsValue = row ? ($(row).attr('data-sections') || '') : '';
+
+        const departmentMatch = !departmentFilter || departmentValue === departmentFilter;
+        const sectionMatch = !sectionFilter || sectionsValue.indexOf(sectionFilter) >= 0;
+        return departmentMatch && sectionMatch;
+    });
+
+    const table = $('#approvedProjectsTable').DataTable({
+        responsive: true,
+        autoWidth: false,
+        pageLength: 10,
+        order: [],
+        rowGroup: { enable: false },
+        dom: "<'d-none'f>rt<'board-table-footer'lip>",
+        columnDefs: [
+            { targets: 0, orderable: false, searchable: false, width: '42px' },
+            { targets: 7, orderable: false, searchable: false }
+        ],
+        language: {
+            emptyTable: @Json.Serialize(Localization.GetString("EmptyTable")),
+            search: @Json.Serialize(Localization.GetString("SearchPlaceholder")),
+            lengthMenu: @Json.Serialize(Localization.GetString("ShowEntries")),
+            info: @Json.Serialize(Localization.GetString("Showing")),
+            infoEmpty: @Json.Serialize(Localization.GetString("InfoEmpty")),
+            paginate: {
+                previous: @Json.Serialize(Localization.GetString("Previous")),
+                next: @Json.Serialize(Localization.GetString("Next")),
+                first: @Json.Serialize(Localization.GetString("First")),
+                last: @Json.Serialize(Localization.GetString("Last"))
+            }
+        }
+    });
+
+    $('#mondaySearchInput').on('input', function () {
+        table.search(this.value).draw();
+    });
+
+    $('#filterDepartment, #filterSection').on('change', function () {
+        table.draw();
+    });
+
+    $('#sortColumn, #sortDirection').on('change', function() {
+        var col = parseInt($('#sortColumn').val());
+        var dir = $('#sortDirection').val();
+        table.order([col, dir]).draw();
+    });
+
+    $('.col-toggle').on('change', function() {
+        var colIdx = parseInt($(this).val());
+        var isChecked = $(this).is(':checked');
+        table.column(colIdx).visible(isChecked);
+    });
+
+    $('#groupByColumn').on('change', function() {
+        var colIdx = $(this).val();
+        if (colIdx === "") {
+            table.rowGroup().disable().draw();
+        } else {
+            table.rowGroup().enable().dataSrc(parseInt(colIdx)).draw();
+        }
+    });
+
+    table.on('draw', function () {
+        $('#approvedProjectsCount').text(table.rows({ search: 'applied' }).count());
+    });
+});
+
+let projectModal;
+
+function formatEmployee(repo) {
+    if (repo.loading) {
+        return repo.text;
+    }
+    var photoUrl = repo.photo;
+    var imageHtml = photoUrl && photoUrl !== 'null' && photoUrl !== ''
+        ? "<img src='" + photoUrl + "' class='rounded-circle flex-shrink-0' style='width: 30px; height: 30px; object-fit: cover;' />"
+        : "<i class='bi bi-person-circle text-secondary flex-shrink-0' style='font-size: 30px; line-height: 1;'></i>";
+
+    var $container = $(
+        "<div class='d-flex align-items-center gap-2'>" +
+        imageHtml +
+        "<span class='text-truncate'>" + repo.text + "</span>" +
+        "</div>"
+    );
+    return $container;
+}
+
+function formatEmployeeSelection(repo) {
+    if (!repo.id) {
+        return repo.text;
+    }
+    var photoUrl = repo.photo || repo.element?.getAttribute('data-photo');
+    var imageHtml = photoUrl && photoUrl !== 'null' && photoUrl !== ''
+        ? "<img src='" + photoUrl + "' class='rounded-circle flex-shrink-0' style='width: 24px; height: 24px; object-fit: cover;' />"
+        : "<i class='bi bi-person-circle text-secondary flex-shrink-0' style='font-size: 24px; line-height: 1;'></i>";
+
+    var $container = $(
+        "<div class='d-flex align-items-center gap-2' style='line-height: 1.5; padding: 2px 0;'>" +
+        imageHtml +
+        "<span class='text-truncate'>" + repo.text + "</span>" +
+        "</div>"
+    );
+    return $container;
+}
+
+$(function() {
+    projectModal = new bootstrap.Modal(document.getElementById('projectModal'));
+    
+    const popoverTriggerList = document.querySelectorAll('.user-popover');
+    [...popoverTriggerList].forEach(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl));
+    
+    $('.select2-employee').select2({
+        theme: 'bootstrap-5',
+        dropdownParent: $('#projectModal'),
+        ajax: {
+            url: '@Url.Action("SearchEmployees", "MyProjects")',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term };
+            },
+            processResults: function (data) {
+                return { results: data.results };
+            },
+            cache: true
+        },
+        templateResult: formatEmployee,
+        templateSelection: formatEmployeeSelection,
+        minimumInputLength: 1
+    });
+});
+
+function openProjectModal() {
+    document.getElementById('projectForm').reset();
+    document.getElementById('projectFormId').value = '';
+    
+    $('#projectFormResponsibleUserId').empty().trigger('change');
+    $('#projectFormTeamMembers').empty().trigger('change');
+    $('#projectFormSponsorUserId').empty().trigger('change');
+
+    document.getElementById('projectModalTitle').innerText = '@Html.Raw(T("إضافة مشروع", "Add Project"))';
+    projectModal.show();
+}
+
+function editProject(id, name, type, deptCode, deptName, respUserId, respUserName, startDate, endDate, description, priority, health, budget, cost, sponsorId, archived, statusId, element) {
+    document.getElementById('projectForm').reset();
+    document.getElementById('projectFormId').value = id;
+    document.getElementById('projectFormName').value = decodeURIComponent(name);
+    document.getElementById('projectFormType').value = decodeURIComponent(type);
+    document.getElementById('projectFormDepartmentCode').value = deptCode || '';
+    document.getElementById('projectFormDepartmentName').value = decodeURIComponent(deptName);
+    document.getElementById('projectFormStartDate').value = startDate || '';
+    document.getElementById('projectFormEndDate').value = endDate || '';
+    
+    document.getElementById('projectFormDescription').value = decodeURIComponent(description);
+    document.getElementById('projectFormPriority').value = priority || '';
+    document.getElementById('projectFormHealthStatus').value = health || '';
+    document.getElementById('projectFormPlannedBudget').value = budget || '';
+    document.getElementById('projectFormActualCost').value = cost || '';
+    document.getElementById('projectFormArchived').checked = (archived === 'true');
+    
+    $('#projectFormResponsibleUserId').empty();
+    if (respUserId) {
+        var respOption = new Option(decodeURIComponent(respUserName), respUserId, true, true);
+        $('#projectFormResponsibleUserId').append(respOption).trigger('change');
+    }
+
+    $('#projectFormSponsorUserId').empty();
+    if (sponsorId) {
+        var sponsorOption = new Option(sponsorId, sponsorId, true, true); // Fallback text is just ID if name not loaded
+        $('#projectFormSponsorUserId').append(sponsorOption).trigger('change');
+    }
+
+    $('#projectFormTeamMembers').empty();
+    if (element) {
+        try {
+            var teamData = JSON.parse(element.getAttribute('data-team') || '[]');
+            teamData.forEach(function(member) {
+                var option = new Option(member.text, member.id, true, true);
+                option.setAttribute('data-photo', member.photo || '');
+                $('#projectFormTeamMembers').append(option);
+            });
+            $('#projectFormTeamMembers').trigger('change');
+        } catch (e) { console.error('Error parsing team members', e); }
+    }
+    
+    document.getElementById('projectModalTitle').innerText = '@Html.Raw(T("تعديل المشروع", "Edit Project"))';
+    projectModal.show();
+}
+
+function saveProject() {
+    const form = document.getElementById('projectForm');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const data = {
+        ProjectId: $('#projectFormId').val() || null,
+        ProjectName: $('#projectFormName').val(),
+        ProjectType: $('#projectFormType').val(),
+        DepartmentCode: $('#projectFormDepartmentCode').val() ? parseInt($('#projectFormDepartmentCode').val()) : null,
+        DepartmentName: $('#projectFormDepartmentName').val(),
+        ResponsibleUserId: $('#projectFormResponsibleUserId').val() ? parseInt($('#projectFormResponsibleUserId').val()) : null,
+        StartDate: $('#projectFormStartDate').val() || null,
+        EndDate: $('#projectFormEndDate').val() || null,
+        
+        ProjectDescription: $('#projectFormDescription').val(),
+        Priority: $('#projectFormPriority').val() ? parseInt($('#projectFormPriority').val()) : null,
+        HealthStatus: $('#projectFormHealthStatus').val() ? parseInt($('#projectFormHealthStatus').val()) : null,
+        PlannedBudget: $('#projectFormPlannedBudget').val() ? parseFloat($('#projectFormPlannedBudget').val()) : null,
+        ActualCost: $('#projectFormActualCost').val() ? parseFloat($('#projectFormActualCost').val()) : null,
+        TeamMemberIds: $('#projectFormTeamMembers').val() ? $('#projectFormTeamMembers').val().map(x => parseInt(x)) : [],
+        SponsorUserId: $('#projectFormSponsorUserId').val() ? parseInt($('#projectFormSponsorUserId').val()) : null,
+        Archived: $('#projectFormArchived').is(':checked'),
+        StatusId: null
+    };
+
+    const btn = document.getElementById('btnSaveProject');
+    btn.disabled = true;
+
+    $.ajax({
+        url: '@Url.Action("SaveProject", "MyProjects")',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        headers: {
+            'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+        },
+        success: function(response) {
+            if (response.success) {
+                projectModal.hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ ' + (response.message === 'RecordCreatedSuccessfully' ? '@Html.Raw(T("تم حفظ المشروع بنجاح", "Project saved successfully"))' : response.message),
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                Swal.fire('@Html.Raw(T("خطأ", "Error"))', response.message, 'error');
+                btn.disabled = false;
+            }
+        },
+        error: function() {
+            Swal.fire('@Html.Raw(T("خطأ", "Error"))', '@Html.Raw(T("حدث خطأ غير متوقع.", "An unexpected error occurred."))', 'error');
+            btn.disabled = false;
+        }
+    });
+}
+
+function deleteProject(id, name) {
+    Swal.fire({
+        title: '@Html.Raw(T("هل أنت متأكد؟", "Are you sure?"))',
+        text: `@Html.Raw(T("سيتم حذف المشروع بالكامل:", "The project will be permanently deleted:")) ${decodeURIComponent(name)}`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: '@Html.Raw(T("نعم، احذفه", "Yes, delete it!"))',
+        cancelButtonText: '@Html.Raw(Localization.GetString("Cancel"))'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: '@Url.Action("DeleteProject", "MyProjects")',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ ProjectId: id, ProjectName: "delete" }),
+                headers: {
+                    'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: '✅ ' + (response.message === 'RecordDeletedSuccessfully' ? '@Html.Raw(T("تم حذف المشروع بنجاح", "Project deleted successfully"))' : response.message),
+                            showConfirmButton: false,
+                            timer: 1500
+                        }).then(() => {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire('@Html.Raw(T("خطأ", "Error"))', response.message, 'error');
+                    }
+                },
+                error: function() {
+                    Swal.fire('@Html.Raw(T("خطأ", "Error"))', '@Html.Raw(T("حدث خطأ غير متوقع.", "An unexpected error occurred."))', 'error');
+                }
+            });
+        }
+    });
+}
+
+function showUserModal(el) {
+    var $el = $(el);
+    var name = $el.data('name') || '--';
+    var photo = $el.data('photo') || '';
+    var role = $el.data('role') || '';
+    var dept = $el.data('department') || ('@(isRtl ? "غير محدد" : "N/A")');
+    var email = $el.data('email') || 'no-email@company.com';
+
+    $('#upm-name').text(name);
+    $('#upm-role').text(role);
+    $('#upm-dept').text(dept);
+    $('#upm-email-link').text(email).attr('href', 'mailto:' + email);
+    $('#upm-contact-btn').attr('href', 'mailto:' + email);
+
+    if (photo) {
+        $('#upm-photo-container').html('<img src="' + photo + '" style="width: 100%; height: 100%; object-fit: cover;" />');
+    } else {
+        $('#upm-photo-container').html('<i class="bi bi-person-fill text-secondary" style="font-size: 3rem;"></i>');
+    }
+
+    var modalElement = document.getElementById('userProfileModal');
+    var modal = bootstrap.Modal.getInstance(modalElement);
+    if (!modal) {
+        modal = new bootstrap.Modal(modalElement);
+    }
+    modal.show();
+}
+</script>
+
+<div class="modal fade" id="userProfileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header border-0 pb-0" style="background: linear-gradient(135deg, var(--app-primary), var(--app-primary-dark)); height: 80px;">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center position-relative px-4 pb-4 pt-0">
+                <div class="position-relative d-inline-block mb-3" style="margin-top: -40px;">
+                    <div id="upm-photo-container" class="rounded-circle shadow bg-white d-flex align-items-center justify-content-center overflow-hidden" style="width: 80px; height: 80px; border: 3px solid #fff;">
+                    </div>
+                </div>
+                <h5 id="upm-name" class="fw-bold mb-1 text-dark">--</h5>
+                <div id="upm-role" class="badge bg-primary bg-opacity-10 text-primary mb-3 px-3 py-2 rounded-pill">--</div>
+                
+                <div class="text-start mt-2">
+                    <div class="d-flex align-items-center mb-2 text-muted small">
+                        <i class="bi bi-briefcase me-2 fs-6"></i>
+                        <span id="upm-dept">--</span>
+                    </div>
+                    <div class="d-flex align-items-center text-muted small">
+                        <i class="bi bi-envelope me-2 fs-6"></i>
+                        <a id="upm-email-link" href="#" class="text-decoration-none text-muted">--</a>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0 pb-4 px-4 justify-content-center">
+                <a id="upm-contact-btn" href="#" class="btn btn-primary rounded-pill w-100 d-flex align-items-center justify-content-center gap-2">
+                    <i class="bi bi-envelope-fill"></i> @T("مراسلة", "Send Email")
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+.hero-card-primary { background: linear-gradient(135deg, var(--app-primary) 0%, var(--app-primary-dark) 100%); }
+.hero-card-accent { background: linear-gradient(135deg, var(--app-accent) 0%, var(--app-accent-dark) 100%); }
+
+.board-shell { background: transparent; border: none; }
+.board-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; border: none; background: transparent; margin-bottom: 0.5rem; }
+.board-toolbar__start, .board-toolbar__end { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.board-search-wrap { position: relative; }
+.board-filter-select { min-width: 170px; border: none; border-radius: 999px; padding: .6rem 1rem; background: #fff; color: var(--app-muted); font-size: 0.9rem; box-shadow: 0 4px 15px rgba(0,0,0,0.02); outline: none; }
+.board-search-wrap i { position: absolute; top: 50%; transform: translateY(-50%); color: var(--app-muted); inset-inline-start: 1.2rem; left: 1.2rem; right: auto; }
+[dir="rtl"] .board-search-wrap i { left: auto; right: 1.2rem; }
+.board-search-input { width: min(280px, 70vw); border: none; border-radius: 999px; padding: .6rem 1rem .6rem 2.8rem; background: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.02); font-size: 0.9rem; outline: none; }
+[dir="rtl"] .board-search-input { padding: .6rem 2.8rem .6rem 1rem; }
+.board-table-wrap { padding: 0; background: transparent; }
+.board-table { border-collapse: separate; border-spacing: 0 12px; }
+.board-table thead th { background: transparent; color: var(--app-muted); font-size: .8rem; font-weight: 600; border: none; white-space: nowrap; padding: .5rem 1rem; }
+.board-table tbody tr { background: #fff; box-shadow: 0 6px 20px rgba(15, 20, 32, 0.03); border-radius: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.board-table tbody tr:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(15, 20, 32, 0.06); position: relative; z-index: 50; }
+.board-table tbody td { border: none; padding: 1.25rem 1rem; vertical-align: middle; background: #fff; }
+.board-table tbody td:first-child { border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
+.board-table tbody td:last-child { border-top-right-radius: 16px; border-bottom-right-radius: 16px; }
+[dir="rtl"] .board-table thead th,
+[dir="rtl"] .board-table tbody td { text-align: right; }
+.board-col-select { text-align: center !important; width: 40px; }
+.board-item-title { font-weight: 700; color: var(--app-text); font-size: 1rem; margin-bottom: 3px; }
+.board-item-subtitle { color: var(--app-muted); font-size: .8rem; }
+.board-status-pill, .board-date-pill { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 999px; padding: .35rem .85rem; font-weight: 600; font-size: .8rem; white-space: nowrap; }
+.board-status-transformational { background: rgba(253,133,58,0.1); color: #fd853a; }
+.board-status-strategic { background: rgba(139,92,246,0.1); color: var(--app-accent); }
+.board-status-operational { background: rgba(18,183,106,0.1); color: #12b76a; }
+.board-date-pill { background: transparent; color: var(--app-muted); font-weight: 600; }
+.board-text-clamp { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--app-text); font-weight: 500; font-size: .9rem; }
+.board-person-cell { display: flex; align-items: center; }
+.board-avatar { width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: var(--app-text); font-size: .85rem; font-weight: 700; flex-shrink: 0; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-left: -10px; position: relative; z-index: 1; }
+[dir="rtl"] .board-avatar { margin-left: 0; margin-right: -10px; }
+.board-avatar:hover { z-index: 10; transform: translateY(-2px); }
+.board-progress-cell { min-width: 140px; }
+.board-progress-track { width: 100%; height: 6px; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+.board-progress-fill { height: 100%; border-radius: 999px; background: var(--app-primary); }
+.board-progress-label { display: flex; justify-content: space-between; margin-bottom: .4rem; color: var(--app-muted); font-size: .75rem; font-weight: 600; }
+.board-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: #fff; border: 1px solid rgba(253,133,58,0.2) !important; color: #fd853a; transition: all 0.2s; text-decoration: none; box-shadow: 0 2px 4px rgba(253,133,58,0.05); }
+.board-action-btn:hover, .board-action-btn[aria-expanded="true"] { background: rgba(253,133,58,0.1); color: #fd853a; border-color: #fd853a !important; }
+.board-action-dropdown { border: 1px solid rgba(253,133,58,0.2) !important; box-shadow: 0 10px 30px rgba(253,133,58,0.08) !important; overflow: hidden; padding: 0.5rem 0; z-index: 1050 !important; text-align: right; }
+.board-action-dropdown .dropdown-item { transition: all 0.2s; font-weight: 500; justify-content: flex-start; }
+.board-action-dropdown .dropdown-item:hover { background-color: rgba(253,133,58,0.05); color: #fd853a; transform: translateX(-4px); }
+.board-table-footer { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 0; color: var(--app-muted); font-size: .9rem; border: none; }
+@@media (max-width: 991.98px) { .board-toolbar { flex-direction: column; align-items: stretch; } .board-search-input { width: 100%; } .board-text-clamp { max-width: 140px; } }
+</style>
+}

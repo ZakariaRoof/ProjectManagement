@@ -1,0 +1,1410 @@
+@model ProjectManagementApp.Models.ManageMyProjectViewModel
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+@{
+    ViewData["Title"] = Localization.GetString("GanttChart") + " - " + Model.ProjectName;
+    var phasesJson = Json.Serialize(Model.Phases);
+    var availableActivitiesJson = Json.Serialize(Model.AvailableProjectActivities);
+    var availableTaskDependenciesJson = Json.Serialize(Model.AvailableTaskDependencyOptions);
+    var availableTaskAssigneesJson = Json.Serialize(Model.AvailableTaskAssignees);
+    var taskChecklistLookup = Model.Phases
+        .SelectMany(x => x.Activities)
+        .SelectMany(x => x.Tasks)
+        .ToDictionary(
+            x => x.PhaseTaskId,
+            x => x.ChecklistItems.Select(c => new
+            {
+                c.PhaseTaskChecklistItemId,
+                c.Title,
+                c.IsCompleted,
+                c.SortOrder
+            }).ToList());
+    var taskChecklistJson = Json.Serialize(taskChecklistLookup);
+    var taskLinkLookup = Model.Phases
+        .SelectMany(x => x.Activities)
+        .SelectMany(x => x.Tasks)
+        .ToDictionary(
+            x => x.PhaseTaskId,
+            x => x.FileLinks.Select(l => new
+            {
+                l.PhaseTaskLinkItemId,
+                l.FileName,
+                l.FileUrl,
+                l.SortOrder
+            }).ToList());
+    var taskLinkJson = Json.Serialize(taskLinkLookup);
+    var isRtl = Localization.IsRtl();
+}
+<link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css" />
+
+<div class="app-content-header">
+    <div class="container-fluid">
+        <div class="row align-items-center">
+            <div class="col-sm-6">
+                <h3 class="mb-0">@Localization.GetString("GanttChart") - @Model.ProjectName</h3>
+            </div>
+            <div class="col-sm-6">
+                <ol class="breadcrumb float-sm-end">
+                    <li class="breadcrumb-item"><a href="~/MyProjects/ApprovedProjects">@Localization.GetString("Home")</a></li>
+                    <li class="breadcrumb-item"><a href="@Url.Action("ApprovedProjects", "MyProjects")">@Localization.GetString("ApprovedProjects")</a></li>
+                    <li class="breadcrumb-item"><a href="@Url.Action("Manage", "MyProjects", new { projectId = Model.ProjectId })">@Localization.GetString("Manage")</a></li>
+                    <li class="breadcrumb-item active">@Localization.GetString("GanttChart")</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="app-content">
+    <div class="container-fluid">
+        @Html.AntiForgeryToken()
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <div><strong>@Localization.GetString("ProjectName"):</strong> @Model.ProjectName</div>
+                    <div><strong>@Localization.GetString("ProjectType"):</strong> @(Model.ProjectTypeText ?? "-")</div>
+                    <div><strong>@Localization.GetString("Responsible"):</strong> @(Model.ResponsibleUserName ?? "-")</div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a class="btn btn-outline-secondary" href="@Url.Action("Manage", "MyProjects", new { projectId = Model.ProjectId })">
+                        <i class="bi bi-arrow-left-circle"></i> @Localization.GetString("Manage")
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        @if (!Model.Phases.Any())
+        {
+            <div class="alert alert-info">@Localization.GetString("NoProjectPhases")</div>
+        }
+        else
+        {
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-0">
+                    <div class="gantt-toolbar">
+                        <div class="gantt-toolbar-title">@Localization.GetString("GanttChart")</div>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary gantt-scale-btn active" data-scale="Day">Day</button>
+                            <button type="button" class="btn btn-outline-primary gantt-scale-btn" data-scale="Week">Week</button>
+                            <button type="button" class="btn btn-outline-primary gantt-scale-btn" data-scale="Month">Month</button>
+                            <button type="button" class="btn btn-outline-primary gantt-scale-btn" data-scale="Quarter">Quarter</button>
+                        </div>
+                    </div>
+                    <div id="projectGanttChart" class="project-gantt-chart"></div>
+                </div>
+            </div>
+
+            <div class="offcanvas offcanvas-end gantt-detail-offcanvas" tabindex="-1" id="ganttDetailOffcanvas" aria-labelledby="ganttDetailOffcanvasLabel">
+                <div class="offcanvas-header align-items-start">
+                    <div>
+                        <div class="gantt-detail-entity-label" id="ganttDetailEntityLabel"></div>
+                        <h5 class="offcanvas-title mb-1" id="ganttDetailOffcanvasLabel">@Localization.GetString("GanttChart")</h5>
+                        <div class="text-muted small" id="ganttDetailSubtitle"></div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        @if (Model.CanManagePhases)
+                        {
+                            <button type="button" class="btn btn-info text-white btn-sm" id="btnGanttPanelEdit">
+                                <i class="bi bi-pencil-square"></i> @Localization.GetString("Edit")
+                            </button>
+                        }
+                        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="@Localization.GetString("Close")"></button>
+                    </div>
+                </div>
+                <div class="offcanvas-body d-flex flex-column gap-3">
+                    <div class="gantt-detail-summary-card">
+                        <div class="gantt-detail-summary-title" id="ganttDetailTitle"></div>
+                        <div class="gantt-detail-summary-grid">
+                            <div class="gantt-summary-item">
+                                <span>@Localization.GetString("StartDate")</span>
+                                <strong id="ganttSummaryStartDate">-</strong>
+                            </div>
+                            <div class="gantt-summary-item">
+                                <span>@Localization.GetString("EndDate")</span>
+                                <strong id="ganttSummaryEndDate">-</strong>
+                            </div>
+                            <div class="gantt-summary-item">
+                                <span>@Localization.GetString("Duration")</span>
+                                <strong id="ganttSummaryDuration">-</strong>
+                            </div>
+                            <div class="gantt-summary-item">
+                                <span>@Localization.GetString("PercentComplete")</span>
+                                <strong id="ganttSummaryProgress">0%</strong>
+                            </div>
+                            <div class="gantt-summary-item">
+                                <span id="ganttSummaryPrimaryLabel">@Localization.GetString("Status")</span>
+                                <strong id="ganttSummaryPrimaryValue">-</strong>
+                            </div>
+                            <div class="gantt-summary-item">
+                                <span id="ganttSummarySecondaryLabel">@Localization.GetString("PhaseCode")</span>
+                                <strong id="ganttSummarySecondaryValue">-</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="gantt-detail-section d-none" id="ganttSummaryAssigneesSection">
+                        <div class="gantt-detail-section-title">@Localization.GetString("AssignedTo")</div>
+                        <div id="ganttSummaryAssignees" class="gantt-chip-list"></div>
+                    </div>
+
+                    <div class="gantt-detail-section d-none" id="ganttSummaryChecklistSection">
+                        <div class="gantt-detail-section-title">@Localization.GetString("Checklist")</div>
+                        <ul id="ganttSummaryChecklist" class="gantt-detail-list list-unstyled mb-0"></ul>
+                    </div>
+
+                    <div class="gantt-detail-section d-none" id="ganttSummaryLinksSection">
+                        <div class="gantt-detail-section-title">@Localization.GetString("Links")</div>
+                        <ul id="ganttSummaryLinks" class="gantt-detail-list list-unstyled mb-0"></ul>
+                    </div>
+
+                    <div class="gantt-detail-section d-none" id="ganttSummaryNotesSection">
+                        <div class="gantt-detail-section-title">@Localization.GetString("Notes")</div>
+                        <div class="gantt-detail-notes" id="ganttSummaryNotes"></div>
+                    </div>
+
+                    @if (Model.CanManagePhases)
+                    {
+                        <div id="ganttDetailEditSection" class="gantt-edit-section d-none">
+                            <div id="ganttPhaseEditForm" class="gantt-form-section d-none">
+                                <input type="hidden" id="ganttPhaseId" />
+                                <div class="row g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">@Localization.GetString("PhaseName")</label>
+                                        <input type="text" id="ganttPhaseName" class="form-control" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">@Localization.GetString("DisplayOrder")</label>
+                                        <input type="number" id="ganttPhaseDisplayOrder" class="form-control" min="1" value="1" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("PhaseCode")</label>
+                                        <input type="text" id="ganttPhaseCode" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("PhaseStatus")</label>
+                                        <select id="ganttPhaseStatus" class="form-select">
+                                            <option value="NotStarted">@Localization.GetString("NotStarted")</option>
+                                            <option value="InProgress">@Localization.GetString("InProgress")</option>
+                                            <option value="OnHold">@Localization.GetString("OnHold")</option>
+                                            <option value="Completed">@Localization.GetString("Completed")</option>
+                                            <option value="Cancelled">@Localization.GetString("Cancelled")</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("PlannedStartDate")</label>
+                                        <input type="date" id="ganttPhasePlannedStartDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("PlannedEndDate")</label>
+                                        <input type="date" id="ganttPhasePlannedEndDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("ActualStartDate")</label>
+                                        <input type="date" id="ganttPhaseActualStartDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("ActualEndDate")</label>
+                                        <input type="date" id="ganttPhaseActualEndDate" class="form-control" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">@Localization.GetString("Notes")</label>
+                                        <textarea id="ganttPhaseNotes" class="form-control" rows="4"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="ganttActivityEditForm" class="gantt-form-section d-none">
+                                <input type="hidden" id="ganttActivityId" />
+                                <input type="hidden" id="ganttActivityPhaseId" />
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label">@Localization.GetString("SelectExistingActivity")</label>
+                                        <select id="ganttActivitySourceActivityId" class="form-select"></select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("ReferenceNumber")</label>
+                                        <input type="text" id="ganttActivityReferenceNumber" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("Activity")</label>
+                                        <input type="text" id="ganttActivityName" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("Indicator")</label>
+                                        <input type="text" id="ganttActivityIndicatorName" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("EstimatedCost")</label>
+                                        <input type="number" id="ganttActivityEstimatedCost" class="form-control" step="0.01" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("TargetValue")</label>
+                                        <input type="text" id="ganttActivityTargetValue" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("VerificationSource")</label>
+                                        <input type="text" id="ganttActivityVerificationSource" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("StartDate")</label>
+                                        <input type="date" id="ganttActivityStartDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("EndDate")</label>
+                                        <input type="date" id="ganttActivityEndDate" class="form-control" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">@Localization.GetString("RisksAndAssumptions")</label>
+                                        <textarea id="ganttActivityRisksAndAssumptions" class="form-control" rows="4"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="ganttTaskEditForm" class="gantt-form-section d-none">
+                                <input type="hidden" id="ganttTaskId" />
+                                <input type="hidden" id="ganttTaskActivityId" />
+                                <div class="row g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">@Localization.GetString("TaskName")</label>
+                                        <input type="text" id="ganttTaskName" class="form-control" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">@Localization.GetString("Priority")</label>
+                                        <select id="ganttTaskPriority" class="form-select">
+                                            <option value="Low">@Localization.GetString("Low")</option>
+                                            <option value="Medium">@Localization.GetString("Medium")</option>
+                                            <option value="High">@Localization.GetString("High")</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("Activity")</label>
+                                        <input type="text" id="ganttTaskActivityName" class="form-control" readonly />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("AssignedTo")</label>
+                                        <select id="ganttTaskAssignedEmployeeIds" class="form-select gantt-multi-select" multiple size="6"></select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("StartDate")</label>
+                                        <input type="date" id="ganttTaskStartDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("EndDate")</label>
+                                        <input type="date" id="ganttTaskEndDate" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">@Localization.GetString("PercentComplete")</label>
+                                        <input type="number" id="ganttTaskPercentComplete" class="form-control" min="0" max="100" />
+                                    </div>
+                                    <div class="col-md-6 d-flex align-items-end">
+                                        <div class="form-check form-switch mb-2">
+                                            <input class="form-check-input" type="checkbox" id="ganttTaskHasDependency">
+                                            <label class="form-check-label" for="ganttTaskHasDependency">@Localization.GetString("Dependencies")</label>
+                                        </div>
+                                    </div>
+                                    <div id="ganttTaskDependencyPanel" class="col-12 d-none">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">@Localization.GetString("SelectDependencyTask")</label>
+                                                <select id="ganttTaskDependentOnTaskId" class="form-select"></select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">@Localization.GetString("DependencyType")</label>
+                                                <select id="ganttTaskDependencyType" class="form-select">
+                                                    <option value="">@Localization.GetString("DependencyType")</option>
+                                                    <option value="StartToStart">@Localization.GetString("StartToStart")</option>
+                                                    <option value="StartToFinish">@Localization.GetString("StartToFinish")</option>
+                                                    <option value="FinishToStart">@Localization.GetString("FinishToStart")</option>
+                                                    <option value="FinishToFinish">@Localization.GetString("FinishToFinish")</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">@Localization.GetString("Notes")</label>
+                                        <textarea id="ganttTaskNotes" class="form-control" rows="4"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                @if (Model.CanManagePhases)
+                {
+                    <div class="offcanvas-footer gantt-detail-footer">
+                        <button type="button" class="btn btn-outline-secondary d-none" id="btnGanttPanelCancelEdit">@Localization.GetString("Cancel")</button>
+                        <button type="button" class="btn btn-primary d-none" id="btnGanttPanelSave">@Localization.GetString("Save")</button>
+                        <button type="button" class="btn btn-outline-danger ms-auto" id="btnGanttPanelDelete">
+                            <i class="bi bi-trash"></i> @Localization.GetString("Delete")
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.js"></script>
+<script>
+$(function () {
+    const phases = @Html.Raw(phasesJson);
+    const availableActivities = @Html.Raw(availableActivitiesJson);
+    const availableTaskDependencies = @Html.Raw(availableTaskDependenciesJson);
+    const availableTaskAssignees = @Html.Raw(availableTaskAssigneesJson);
+    const taskChecklistLookup = @Html.Raw(taskChecklistJson);
+    const taskLinkLookup = @Html.Raw(taskLinkJson);
+    const canManage = @Json.Serialize(Model.CanManagePhases);
+    const isRtl = @Json.Serialize(isRtl);
+    const projectId = '@Model.ProjectId';
+    const savePhaseUrl = '@Url.Action("SavePhase", "MyProjects")';
+    const savePhaseActivityUrl = '@Url.Action("SavePhaseActivity", "MyProjects")';
+    const savePhaseTaskUrl = '@Url.Action("SavePhaseTask", "MyProjects")';
+    const deletePhaseUrl = '@Url.Action("DeletePhase", "MyProjects")';
+    const deletePhaseActivityUrl = '@Url.Action("DeletePhaseActivity", "MyProjects")';
+    const deletePhaseTaskUrl = '@Url.Action("DeletePhaseTask", "MyProjects")';
+    const labels = {
+        success: @Json.Serialize(Localization.GetString("Success")),
+        error: @Json.Serialize(Localization.GetString("Error")),
+        warning: @Json.Serialize(Localization.GetString("Warning")),
+        selectExistingActivity: @Json.Serialize(Localization.GetString("SelectExistingActivity")),
+        selectDependencyTask: @Json.Serialize(Localization.GetString("SelectDependencyTask")),
+        phase: @Json.Serialize(Localization.GetString("PhaseName")),
+        activity: @Json.Serialize(Localization.GetString("Activity")),
+        task: @Json.Serialize(Localization.GetString("TaskName")),
+        status: @Json.Serialize(Localization.GetString("Status")),
+        phaseCode: @Json.Serialize(Localization.GetString("PhaseCode")),
+        phaseName: @Json.Serialize(Localization.GetString("PhaseName")),
+        referenceNumber: @Json.Serialize(Localization.GetString("ReferenceNumber")),
+        priority: @Json.Serialize(Localization.GetString("Priority")),
+        activityName: @Json.Serialize(Localization.GetString("Activity")),
+        deleteConfirmation: @Json.Serialize(Localization.GetString("DeleteConfirmation")),
+        recordDeletedSuccessfully: @Json.Serialize(Localization.GetString("RecordDeletedSuccessfully")),
+        phaseNameRequired: @Json.Serialize(Localization.GetString("PhaseNameRequired")),
+        activityRequired: @Json.Serialize(Localization.GetString("ActivityRequired")),
+        taskNameRequired: @Json.Serialize(Localization.GetString("TaskNameRequired")),
+        dependencyTypeRequired: @Json.Serialize(Localization.GetString("DependencyTypeRequired")),
+        noDataAvailable: @Json.Serialize(Localization.GetString("NoDataAvailable")),
+        low: @Json.Serialize(Localization.GetString("Low")),
+        medium: @Json.Serialize(Localization.GetString("Medium")),
+        high: @Json.Serialize(Localization.GetString("High")),
+        notStarted: @Json.Serialize(Localization.GetString("NotStarted")),
+        inProgress: @Json.Serialize(Localization.GetString("InProgress")),
+        onHold: @Json.Serialize(Localization.GetString("OnHold")),
+        completed: @Json.Serialize(Localization.GetString("Completed")),
+        cancelled: @Json.Serialize(Localization.GetString("Cancelled"))
+    };
+    const offcanvasElement = document.getElementById('ganttDetailOffcanvas');
+    const offcanvas = offcanvasElement ? new bootstrap.Offcanvas(offcanvasElement) : null;
+    const detailLookup = {};
+    let currentDetail = null;
+
+    if (!document.getElementById('projectGanttChart') || !Array.isArray(phases) || phases.length === 0) {
+        return;
+    }
+
+    function parseDate(value) {
+        if (!value) return null;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function addDays(date, days) {
+        const result = new Date(date.getTime());
+        result.setDate(result.getDate() + days);
+        return result;
+    }
+
+    function startOfDay(date) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
+    function formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function toDateInput(value) {
+        return value ? String(value).substring(0, 10) : '';
+    }
+
+    function formatDisplayDate(value) {
+        const date = parseDate(value);
+        return date ? formatDate(date) : '-';
+    }
+
+    function calcDuration(start, end) {
+        const safeStart = startOfDay(start);
+        const safeEnd = startOfDay(end);
+        const diff = Math.round((safeEnd - safeStart) / 86400000);
+        return Math.max(1, diff + 1);
+    }
+
+    function ensureRange(start, end, fallbackStart, fallbackEnd) {
+        let safeStart = start || fallbackStart || new Date();
+        let safeEnd = end || fallbackEnd || addDays(safeStart, 1);
+        safeStart = startOfDay(safeStart);
+        safeEnd = startOfDay(safeEnd);
+        if (safeEnd < safeStart) {
+            safeEnd = addDays(safeStart, 1);
+        }
+        return { start: safeStart, end: safeEnd };
+    }
+
+    function averageProgress(items) {
+        if (!items || items.length === 0) return 0;
+        const values = items.map(x => Number(x.progress || 0));
+        return values.reduce((sum, current) => sum + current, 0) / values.length;
+    }
+
+    function mapDependencyType(type) {
+        const linkTypes = gantt.config.links;
+        switch (type) {
+            case 'StartToStart':
+                return linkTypes.start_to_start;
+            case 'StartToFinish':
+                return linkTypes.start_to_finish;
+            case 'FinishToFinish':
+                return linkTypes.finish_to_finish;
+            case 'FinishToStart':
+            default:
+                return linkTypes.finish_to_start;
+        }
+    }
+
+    function getLocalizedPriority(value) {
+        const normalized = String(value || 'Medium').toLowerCase();
+        if (normalized === 'low') return labels.low;
+        if (normalized === 'high') return labels.high;
+        return labels.medium;
+    }
+
+    function getLocalizedStatus(value) {
+        const normalized = String(value || 'NotStarted').toLowerCase();
+        if (normalized === 'inprogress') return labels.inProgress;
+        if (normalized === 'onhold') return labels.onHold;
+        if (normalized === 'completed') return labels.completed;
+        if (normalized === 'cancelled') return labels.cancelled;
+        return labels.notStarted;
+    }
+
+    function getTaskChecklistItems(taskId) {
+        const items = taskChecklistLookup[String(taskId)] || taskChecklistLookup[taskId] || [];
+        return items.map(function (item, index) {
+            return {
+                phaseTaskChecklistItemId: item.PhaseTaskChecklistItemId || 0,
+                title: item.Title || '',
+                isCompleted: !!item.IsCompleted,
+                sortOrder: item.SortOrder || (index + 1)
+            };
+        });
+    }
+
+    function getTaskLinks(taskId) {
+        const items = taskLinkLookup[String(taskId)] || taskLinkLookup[taskId] || [];
+        return items.map(function (item, index) {
+            return {
+                phaseTaskLinkItemId: item.PhaseTaskLinkItemId || 0,
+                fileName: item.FileName || '',
+                fileUrl: item.FileUrl || '',
+                sortOrder: item.SortOrder || (index + 1)
+            };
+        });
+    }
+
+    function populateActivityTemplateOptions() {
+        const select = $('#ganttActivitySourceActivityId');
+        select.empty().append(new Option(labels.selectExistingActivity, ''));
+        availableActivities.forEach(function (activity) {
+            select.append(new Option(activity.ActivityName || '', String(activity.ActivityId || '')));
+        });
+    }
+
+    function fillActivityFromTemplate(activity) {
+        if (!activity) {
+            $('#ganttActivityReferenceNumber').val('');
+            return;
+        }
+
+        $('#ganttActivityReferenceNumber').val(activity.ActivityId || '');
+        $('#ganttActivityName').val(activity.ActivityName || '');
+        $('#ganttActivityIndicatorName').val(activity.IndicatorName || '');
+        $('#ganttActivityEstimatedCost').val(activity.EstimatedCost ?? '');
+        $('#ganttActivityTargetValue').val(activity.TargetValue || '');
+        $('#ganttActivityVerificationSource').val(activity.VerificationSource || '');
+        $('#ganttActivityStartDate').val(toDateInput(activity.StartDate));
+        $('#ganttActivityEndDate').val(toDateInput(activity.EndDate));
+        $('#ganttActivityRisksAndAssumptions').val(activity.RisksAndAssumptions || '');
+    }
+
+    function populateTaskAssigneeOptions() {
+        const select = $('#ganttTaskAssignedEmployeeIds');
+        select.empty();
+        availableTaskAssignees.forEach(function (assignee) {
+            select.append(new Option(assignee.EmployeeName || '', String(assignee.EmployeeId || '')));
+        });
+    }
+
+    function populateTaskDependencyOptions(currentTaskId) {
+        const select = $('#ganttTaskDependentOnTaskId');
+        const currentId = parseInt(currentTaskId || '0', 10);
+        select.empty().append(new Option(labels.selectDependencyTask, ''));
+
+        availableTaskDependencies
+            .filter(x => x.PhaseTaskId !== currentId)
+            .forEach(function (item) {
+                const phaseName = item.PhaseName || '';
+                const activityName = item.ActivityName || '';
+                const suffix = [phaseName, activityName].filter(Boolean).join(' / ');
+                const text = suffix ? (item.TaskName + ' - ' + suffix) : item.TaskName;
+                select.append(new Option(text, String(item.PhaseTaskId)));
+            });
+    }
+
+    function toggleTaskDependencyPanel() {
+        const enabled = $('#ganttTaskHasDependency').is(':checked');
+        $('#ganttTaskDependencyPanel').toggleClass('d-none', !enabled);
+        if (!enabled) {
+            $('#ganttTaskDependentOnTaskId').val('');
+            $('#ganttTaskDependencyType').val('');
+        }
+    }
+
+    function showOperationResult(result) {
+        Swal.fire({
+            icon: result.success ? 'success' : 'error',
+            title: result.success ? labels.success : labels.error,
+            text: result.message,
+            timer: result.success ? 1400 : undefined,
+            showConfirmButton: !result.success
+        }).then(function () {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+            },
+            body: JSON.stringify(payload)
+        });
+
+        return await response.json();
+    }
+
+    function renderChipList(container, values) {
+        const target = $(container);
+        target.empty();
+        if (!values || values.length === 0) {
+            target.append(`<span class="text-muted small">${labels.noDataAvailable}</span>`);
+            return;
+        }
+
+        values.forEach(function (value) {
+            target.append(`<span class="gantt-chip">${value}</span>`);
+        });
+    }
+
+    function renderChecklistSummary(taskId) {
+        const list = $('#ganttSummaryChecklist');
+        const items = getTaskChecklistItems(taskId);
+        list.empty();
+        if (!items.length) {
+            list.append(`<li class="text-muted small">${labels.noDataAvailable}</li>`);
+            return;
+        }
+
+        items.sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); }).forEach(function (item) {
+            const icon = item.isCompleted ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted';
+            list.append(`<li><i class="bi ${icon}"></i><span>${item.title}</span></li>`);
+        });
+    }
+
+    function renderLinksSummary(taskId) {
+        const list = $('#ganttSummaryLinks');
+        const items = getTaskLinks(taskId);
+        list.empty();
+        if (!items.length) {
+            list.append(`<li class="text-muted small">${labels.noDataAvailable}</li>`);
+            return;
+        }
+
+        items.sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); }).forEach(function (item) {
+            const safeUrl = item.fileUrl || '#';
+            list.append(`<li><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${item.fileName}</a></li>`);
+        });
+    }
+
+    function hideEditForms() {
+        $('#ganttPhaseEditForm, #ganttActivityEditForm, #ganttTaskEditForm').addClass('d-none');
+    }
+
+    function setEditMode(enabled) {
+        if (!canManage) {
+            return;
+        }
+
+        $('#ganttDetailEditSection').toggleClass('d-none', !enabled);
+        $('#btnGanttPanelSave, #btnGanttPanelCancelEdit').toggleClass('d-none', !enabled);
+        $('#btnGanttPanelEdit').toggleClass('d-none', enabled);
+    }
+
+    function fillPhaseForm(detail) {
+        const phase = detail.raw || {};
+        hideEditForms();
+        $('#ganttPhaseEditForm').removeClass('d-none');
+        $('#ganttPhaseId').val(String(phase.PhaseId || ''));
+        $('#ganttPhaseName').val(phase.PhaseName || '');
+        $('#ganttPhaseCode').val(phase.PhaseCode || '');
+        $('#ganttPhaseDisplayOrder').val(String(phase.DisplayOrder || 1));
+        $('#ganttPhaseStatus').val(phase.PhaseStatus || 'NotStarted');
+        $('#ganttPhasePlannedStartDate').val(toDateInput(phase.PlannedStartDate));
+        $('#ganttPhasePlannedEndDate').val(toDateInput(phase.PlannedEndDate));
+        $('#ganttPhaseActualStartDate').val(toDateInput(phase.ActualStartDate));
+        $('#ganttPhaseActualEndDate').val(toDateInput(phase.ActualEndDate));
+        $('#ganttPhaseNotes').val(phase.Notes || '');
+    }
+
+    function fillActivityForm(detail) {
+        const activity = detail.raw || {};
+        hideEditForms();
+        $('#ganttActivityEditForm').removeClass('d-none');
+        $('#ganttActivityId').val(String(activity.PhaseActivityId || ''));
+        $('#ganttActivityPhaseId').val(String(activity.PhaseId || detail.phaseId || ''));
+        $('#ganttActivitySourceActivityId').val(activity.SourceActivityId ? String(activity.SourceActivityId) : '');
+        $('#ganttActivityReferenceNumber').val(activity.ReferenceNumber || '');
+        $('#ganttActivityName').val(activity.ActivityName || '');
+        $('#ganttActivityIndicatorName').val(activity.IndicatorName || '');
+        $('#ganttActivityEstimatedCost').val(activity.EstimatedCost ?? '');
+        $('#ganttActivityTargetValue').val(activity.TargetValue || '');
+        $('#ganttActivityVerificationSource').val(activity.VerificationSource || '');
+        $('#ganttActivityStartDate').val(toDateInput(activity.StartDate));
+        $('#ganttActivityEndDate').val(toDateInput(activity.EndDate));
+        $('#ganttActivityRisksAndAssumptions').val(activity.RisksAndAssumptions || '');
+    }
+
+    function fillTaskForm(detail) {
+        const task = detail.raw || {};
+        hideEditForms();
+        $('#ganttTaskEditForm').removeClass('d-none');
+        $('#ganttTaskId').val(String(task.PhaseTaskId || ''));
+        $('#ganttTaskActivityId').val(String(task.PhaseActivityId || detail.activityId || ''));
+        $('#ganttTaskName').val(task.TaskName || '');
+        $('#ganttTaskPriority').val(task.Priority || 'Medium');
+        $('#ganttTaskActivityName').val(detail.activityName || '');
+        $('#ganttTaskStartDate').val(toDateInput(task.StartDate));
+        $('#ganttTaskEndDate').val(toDateInput(task.EndDate));
+        $('#ganttTaskPercentComplete').val(String(task.PercentComplete || 0));
+        $('#ganttTaskNotes').val(task.Notes || '');
+        populateTaskDependencyOptions(task.PhaseTaskId || 0);
+        $('#ganttTaskHasDependency').prop('checked', !!task.DependentOnPhaseTaskId);
+        $('#ganttTaskDependentOnTaskId').val(task.DependentOnPhaseTaskId ? String(task.DependentOnPhaseTaskId) : '');
+        $('#ganttTaskDependencyType').val(task.DependencyType || '');
+        $('#ganttTaskAssignedEmployeeIds').val((task.Assignees || []).map(function (item) { return String(item.EmployeeId); }));
+        toggleTaskDependencyPanel();
+    }
+
+    function bindEditForm(detail) {
+        if (!canManage) {
+            return;
+        }
+
+        if (detail.entityType === 'phase') {
+            fillPhaseForm(detail);
+        } else if (detail.entityType === 'activity') {
+            fillActivityForm(detail);
+        } else {
+            fillTaskForm(detail);
+        }
+    }
+
+    function renderSummary(detail) {
+        const raw = detail.raw || {};
+        $('#ganttDetailEntityLabel').text(detail.entityLabel || '');
+        $('#ganttDetailTitle').text(detail.name || '-');
+        $('#ganttDetailSubtitle').text(detail.subtitle || '');
+        $('#ganttDetailOffcanvasLabel').text(detail.name || '@Localization.GetString("GanttChart")');
+        $('#ganttSummaryStartDate').text(detail.startDateText || '-');
+        $('#ganttSummaryEndDate').text(detail.endDateText || '-');
+        $('#ganttSummaryDuration').text((detail.duration || 0) + 'd');
+        $('#ganttSummaryProgress').text((detail.progressPercent || 0) + '%');
+
+        if (detail.entityType === 'phase') {
+            $('#ganttSummaryPrimaryLabel').text(labels.status);
+            $('#ganttSummaryPrimaryValue').text(getLocalizedStatus(raw.PhaseStatus));
+            $('#ganttSummarySecondaryLabel').text(labels.phaseCode);
+            $('#ganttSummarySecondaryValue').text(raw.PhaseCode || '-');
+        } else if (detail.entityType === 'activity') {
+            $('#ganttSummaryPrimaryLabel').text(labels.phaseName);
+            $('#ganttSummaryPrimaryValue').text(detail.phaseName || '-');
+            $('#ganttSummarySecondaryLabel').text(labels.referenceNumber);
+            $('#ganttSummarySecondaryValue').text(raw.ReferenceNumber || '-');
+        } else {
+            $('#ganttSummaryPrimaryLabel').text(labels.priority);
+            $('#ganttSummaryPrimaryValue').text(getLocalizedPriority(raw.Priority));
+            $('#ganttSummarySecondaryLabel').text(labels.activityName);
+            $('#ganttSummarySecondaryValue').text(detail.activityName || '-');
+        }
+
+        const assigneeNames = (raw.Assignees || []).map(function (item) { return item.EmployeeName; }).filter(Boolean);
+        $('#ganttSummaryAssigneesSection').toggleClass('d-none', detail.entityType !== 'task');
+        if (detail.entityType === 'task') {
+            renderChipList('#ganttSummaryAssignees', assigneeNames);
+            renderChecklistSummary(raw.PhaseTaskId || 0);
+            renderLinksSummary(raw.PhaseTaskId || 0);
+        }
+
+        $('#ganttSummaryChecklistSection').toggleClass('d-none', detail.entityType !== 'task');
+        $('#ganttSummaryLinksSection').toggleClass('d-none', detail.entityType !== 'task');
+
+        const notes = String(raw.Notes || raw.RisksAndAssumptions || '').trim();
+        $('#ganttSummaryNotesSection').toggleClass('d-none', !notes);
+        $('#ganttSummaryNotes').text(notes || '');
+    }
+
+    function openDetailPanel(taskKey) {
+        const detail = detailLookup[String(taskKey)] || detailLookup[taskKey];
+        if (!detail) {
+            return;
+        }
+
+        currentDetail = detail;
+        renderSummary(detail);
+        bindEditForm(detail);
+        setEditMode(false);
+        if (canManage) {
+            $('#btnGanttPanelDelete').removeClass('d-none');
+        }
+        offcanvas?.show();
+    }
+
+    async function saveCurrentDetail() {
+        if (!currentDetail) {
+            return;
+        }
+
+        let url = '';
+        let payload = null;
+
+        if (currentDetail.entityType === 'phase') {
+            const phaseName = $('#ganttPhaseName').val();
+            if (!phaseName || String(phaseName).trim() === '') {
+                Swal.fire({ icon: 'warning', title: labels.warning, text: labels.phaseNameRequired });
+                return;
+            }
+
+            url = savePhaseUrl;
+            payload = {
+                phaseId: parseInt($('#ganttPhaseId').val() || '0', 10),
+                projectId: projectId,
+                phaseName: String(phaseName).trim(),
+                phaseCode: $('#ganttPhaseCode').val() || null,
+                displayOrder: parseInt($('#ganttPhaseDisplayOrder').val() || '1', 10),
+                phaseStatus: $('#ganttPhaseStatus').val() || 'NotStarted',
+                plannedStartDate: $('#ganttPhasePlannedStartDate').val() || null,
+                plannedEndDate: $('#ganttPhasePlannedEndDate').val() || null,
+                actualStartDate: $('#ganttPhaseActualStartDate').val() || null,
+                actualEndDate: $('#ganttPhaseActualEndDate').val() || null,
+                notes: $('#ganttPhaseNotes').val() || null
+            };
+        } else if (currentDetail.entityType === 'activity') {
+            const activityName = $('#ganttActivityName').val();
+            if (!activityName || String(activityName).trim() === '') {
+                Swal.fire({ icon: 'warning', title: labels.warning, text: labels.activityRequired });
+                return;
+            }
+
+            url = savePhaseActivityUrl;
+            payload = {
+                phaseActivityId: parseInt($('#ganttActivityId').val() || '0', 10),
+                phaseId: parseInt($('#ganttActivityPhaseId').val() || '0', 10),
+                projectId: projectId,
+                sourceActivityId: $('#ganttActivitySourceActivityId').val() ? parseInt($('#ganttActivitySourceActivityId').val(), 10) : null,
+                referenceNumber: $('#ganttActivityReferenceNumber').val() || null,
+                activityName: String(activityName).trim(),
+                indicatorName: $('#ganttActivityIndicatorName').val() || null,
+                estimatedCost: $('#ganttActivityEstimatedCost').val() === '' ? null : parseFloat($('#ganttActivityEstimatedCost').val()),
+                targetValue: $('#ganttActivityTargetValue').val() || null,
+                verificationSource: $('#ganttActivityVerificationSource').val() || null,
+                startDate: $('#ganttActivityStartDate').val() || null,
+                endDate: $('#ganttActivityEndDate').val() || null,
+                risksAndAssumptions: $('#ganttActivityRisksAndAssumptions').val() || null
+            };
+        } else {
+            const taskName = $('#ganttTaskName').val();
+            if (!taskName || String(taskName).trim() === '') {
+                Swal.fire({ icon: 'warning', title: labels.warning, text: labels.taskNameRequired });
+                return;
+            }
+
+            if ($('#ganttTaskHasDependency').is(':checked') && $('#ganttTaskDependentOnTaskId').val() && !$('#ganttTaskDependencyType').val()) {
+                Swal.fire({ icon: 'warning', title: labels.warning, text: labels.dependencyTypeRequired });
+                return;
+            }
+
+            url = savePhaseTaskUrl;
+            payload = {
+                phaseTaskId: parseInt($('#ganttTaskId').val() || '0', 10),
+                phaseActivityId: parseInt($('#ganttTaskActivityId').val() || '0', 10),
+                projectId: projectId,
+                taskName: String(taskName).trim(),
+                startDate: $('#ganttTaskStartDate').val() || null,
+                endDate: $('#ganttTaskEndDate').val() || null,
+                priority: $('#ganttTaskPriority').val() || 'Medium',
+                percentComplete: parseInt($('#ganttTaskPercentComplete').val() || '0', 10),
+                notes: $('#ganttTaskNotes').val() || null,
+                dependentOnPhaseTaskId: $('#ganttTaskHasDependency').is(':checked') && $('#ganttTaskDependentOnTaskId').val() ? parseInt($('#ganttTaskDependentOnTaskId').val(), 10) : null,
+                dependencyType: $('#ganttTaskHasDependency').is(':checked') ? ($('#ganttTaskDependencyType').val() || null) : null,
+                assignedEmployeeIds: ($('#ganttTaskAssignedEmployeeIds').val() || []).map(Number),
+                checklistItems: getTaskChecklistItems(currentDetail.entityId),
+                fileLinks: getTaskLinks(currentDetail.entityId)
+            };
+        }
+
+        const result = await postJson(url, payload);
+        showOperationResult(result);
+    }
+
+    async function deleteCurrentDetail() {
+        if (!currentDetail) {
+            return;
+        }
+
+        const confirm = await Swal.fire({
+            icon: 'warning',
+            title: labels.warning,
+            text: labels.deleteConfirmation,
+            showCancelButton: true,
+            confirmButtonText: '@Localization.GetString("Delete")',
+            cancelButtonText: '@Localization.GetString("Cancel")',
+            reverseButtons: isRtl
+        });
+
+        if (!confirm.isConfirmed) {
+            return;
+        }
+
+        let url = '';
+        let payload = { projectId: projectId };
+
+        if (currentDetail.entityType === 'phase') {
+            url = deletePhaseUrl;
+            payload.phaseId = currentDetail.entityId;
+        } else if (currentDetail.entityType === 'activity') {
+            url = deletePhaseActivityUrl;
+            payload.phaseActivityId = currentDetail.entityId;
+        } else {
+            url = deletePhaseTaskUrl;
+            payload.phaseTaskId = currentDetail.entityId;
+        }
+
+        const result = await postJson(url, payload);
+        showOperationResult(result);
+    }
+
+    populateActivityTemplateOptions();
+    populateTaskAssigneeOptions();
+
+    $('#ganttActivitySourceActivityId').on('change', function () {
+        const selectedId = parseInt($(this).val() || '0', 10);
+        if (!selectedId) {
+            return;
+        }
+
+        const selectedActivity = availableActivities.find(function (item) { return item.ActivityId === selectedId; });
+        fillActivityFromTemplate(selectedActivity);
+    });
+
+    $('#ganttTaskHasDependency').on('change', toggleTaskDependencyPanel);
+    $('#btnGanttPanelEdit').on('click', function () { setEditMode(true); });
+    $('#btnGanttPanelCancelEdit').on('click', function () { setEditMode(false); bindEditForm(currentDetail); });
+    $('#btnGanttPanelSave').on('click', saveCurrentDetail);
+    $('#btnGanttPanelDelete').on('click', deleteCurrentDetail);
+    offcanvasElement?.addEventListener('hidden.bs.offcanvas', function () {
+        currentDetail = null;
+        setEditMode(false);
+    });
+
+    const data = [];
+    const links = [];
+    const today = startOfDay(new Date());
+
+    phases.forEach(function (phase) {
+        const phaseId = `phase-${phase.PhaseId}`;
+        const activityRanges = [];
+        const activityProgressItems = [];
+
+        (phase.Activities || []).forEach(function (activity) {
+            const activityId = `activity-${activity.PhaseActivityId}`;
+            const taskRanges = [];
+            const taskProgressItems = [];
+
+            (activity.Tasks || []).forEach(function (task) {
+                const taskId = `task-${task.PhaseTaskId}`;
+                const taskRange = ensureRange(parseDate(task.StartDate), parseDate(task.EndDate), parseDate(activity.StartDate), parseDate(activity.EndDate));
+                const assigneeNames = (task.Assignees || []).map(function (x) { return x.EmployeeName; }).filter(Boolean);
+                const progress = Math.max(0, Math.min(1, Number(task.PercentComplete || 0) / 100));
+                const duration = calcDuration(taskRange.start, taskRange.end);
+
+                detailLookup[taskId] = {
+                    ganttId: taskId,
+                    entityType: 'task',
+                    entityId: task.PhaseTaskId,
+                    entityLabel: labels.task,
+                    name: task.TaskName || labels.task,
+                    subtitle: [phase.PhaseName, activity.ActivityName].filter(Boolean).join(' / '),
+                    phaseId: phase.PhaseId,
+                    phaseName: phase.PhaseName || '',
+                    activityId: activity.PhaseActivityId,
+                    activityName: activity.ActivityName || '',
+                    raw: task,
+                    startDateText: formatDate(taskRange.start),
+                    endDateText: formatDate(taskRange.end),
+                    duration: duration,
+                    progressPercent: Math.round(progress * 100)
+                };
+
+                data.push({
+                    id: taskId,
+                    parent: activityId,
+                    text: task.TaskName || 'Task',
+                    start_date: formatDate(taskRange.start),
+                    duration: duration,
+                    progress: progress,
+                    ownerNames: assigneeNames.join('? '),
+                    ownerCount: assigneeNames.length,
+                    open: true,
+                    itemType: 'gantt-task'
+                });
+
+                taskRanges.push(taskRange);
+                taskProgressItems.push({ progress: progress });
+
+                if (task.DependentOnPhaseTaskId) {
+                    links.push({
+                        id: `link-${task.PhaseTaskId}`,
+                        source: `task-${task.DependentOnPhaseTaskId}`,
+                        target: taskId,
+                        type: mapDependencyType(task.DependencyType)
+                    });
+                }
+            });
+
+            const activityFallbackStart = taskRanges.length > 0 ? taskRanges.map(function (x) { return x.start; }).sort(function (a, b) { return a - b; })[0] : today;
+            const activityFallbackEnd = taskRanges.length > 0 ? taskRanges.map(function (x) { return x.end; }).sort(function (a, b) { return b - a; })[0] : addDays(activityFallbackStart, 1);
+            const activityRange = ensureRange(parseDate(activity.StartDate), parseDate(activity.EndDate), activityFallbackStart, activityFallbackEnd);
+            const activityProgress = averageProgress(taskProgressItems);
+            const activityDuration = calcDuration(activityRange.start, activityRange.end);
+
+            detailLookup[activityId] = {
+                ganttId: activityId,
+                entityType: 'activity',
+                entityId: activity.PhaseActivityId,
+                entityLabel: labels.activity,
+                name: activity.ActivityName || labels.activity,
+                subtitle: phase.PhaseName || '',
+                phaseId: phase.PhaseId,
+                phaseName: phase.PhaseName || '',
+                raw: activity,
+                startDateText: formatDate(activityRange.start),
+                endDateText: formatDate(activityRange.end),
+                duration: activityDuration,
+                progressPercent: Math.round(activityProgress * 100)
+            };
+
+            data.push({
+                id: activityId,
+                parent: phaseId,
+                text: activity.ActivityName || 'Activity',
+                start_date: formatDate(activityRange.start),
+                duration: activityDuration,
+                progress: activityProgress,
+                ownerNames: '',
+                ownerCount: 0,
+                type: gantt.config.types.project,
+                open: true,
+                itemType: 'gantt-activity'
+            });
+
+            activityRanges.push(activityRange);
+            activityProgressItems.push({ progress: activityProgress });
+        });
+
+        const phaseFallbackStart = activityRanges.length > 0 ? activityRanges.map(function (x) { return x.start; }).sort(function (a, b) { return a - b; })[0] : today;
+        const phaseFallbackEnd = activityRanges.length > 0 ? activityRanges.map(function (x) { return x.end; }).sort(function (a, b) { return b - a; })[0] : addDays(phaseFallbackStart, 1);
+        const phaseRange = ensureRange(parseDate(phase.ActualStartDate) || parseDate(phase.PlannedStartDate), parseDate(phase.ActualEndDate) || parseDate(phase.PlannedEndDate), phaseFallbackStart, phaseFallbackEnd);
+        const phaseProgress = averageProgress(activityProgressItems);
+        const phaseDuration = calcDuration(phaseRange.start, phaseRange.end);
+
+        detailLookup[phaseId] = {
+            ganttId: phaseId,
+            entityType: 'phase',
+            entityId: phase.PhaseId,
+            entityLabel: labels.phase,
+            name: phase.PhaseName || labels.phase,
+            subtitle: '@Model.ProjectName',
+            raw: phase,
+            startDateText: formatDate(phaseRange.start),
+            endDateText: formatDate(phaseRange.end),
+            duration: phaseDuration,
+            progressPercent: Math.round(phaseProgress * 100)
+        };
+
+        data.push({
+            id: phaseId,
+            parent: 0,
+            text: phase.PhaseName || 'Phase',
+            start_date: formatDate(phaseRange.start),
+            duration: phaseDuration,
+            progress: phaseProgress,
+            ownerNames: '',
+            ownerCount: 0,
+            type: gantt.config.types.project,
+            open: true,
+            itemType: 'gantt-phase'
+        });
+    });
+
+    gantt.plugins({ marker: true, tooltip: true });
+    gantt.config.readonly = true;
+    gantt.config.grid_width = 540;
+    gantt.config.row_height = 42;
+    gantt.config.scale_height = 60;
+    gantt.config.date_format = "%Y-%m-%d";
+    gantt.config.open_tree_initially = true;
+    gantt.config.show_progress = true;
+    gantt.config.columns = [
+        { name: 'text', label: '@Localization.GetString("Name")', tree: true, width: 260, resize: true },
+        { name: 'start_date', label: '@Localization.GetString("StartDate")', align: 'center', width: 110 },
+        { name: 'duration', label: '@Localization.GetString("Duration")', align: 'center', width: 90, template: function (task) { return task.duration + 'd'; } },
+        {
+            name: 'owner',
+            label: '@Localization.GetString("AssignedTo")',
+            align: 'center',
+            width: 80,
+            template: function (task) {
+                if (!task.ownerCount) {
+                    return '-';
+                }
+
+                const iconClass = task.ownerCount > 1 ? 'bi-people-fill' : 'bi-person-fill';
+                const title = String(task.ownerNames || '').replace(/"/g, '&quot;');
+                return `<span class="gantt-owner-icon" title="${title}"><i class="bi ${iconClass}"></i></span>`;
+            }
+        }
+    ];
+
+    gantt.templates.task_class = function (start, end, task) {
+        return task.itemType || '';
+    };
+
+    gantt.templates.grid_row_class = function (start, end, task) {
+        return task.itemType ? task.itemType + '-row gantt-clickable-row' : 'gantt-clickable-row';
+    };
+
+    gantt.templates.tooltip_text = function (start, end, task) {
+        return `<b>${task.text}</b><br/>@Localization.GetString("StartDate"): ${gantt.templates.tooltip_date_format(start)}<br/>@Localization.GetString("EndDate"): ${gantt.templates.tooltip_date_format(end)}`;
+    };
+
+    gantt.attachEvent('onTaskClick', function (id, e) {
+        const target = e && e.target ? e.target : null;
+        if (!target) {
+            return true;
+        }
+
+        if (target.closest('.gantt_tree_icon')) {
+            return true;
+        }
+
+        if (target.closest('.gantt_tree_content')) {
+            openDetailPanel(id);
+        }
+
+        return true;
+    });
+
+    function setScale(mode) {
+        if (mode === 'Day') {
+            gantt.config.scales = [
+                { unit: 'month', step: 1, format: '%F %Y' },
+                { unit: 'day', step: 1, format: '%d' }
+            ];
+        } else if (mode === 'Week') {
+            gantt.config.scales = [
+                { unit: 'month', step: 1, format: '%F %Y' },
+                { unit: 'week', step: 1, format: function (date) { return 'W' + gantt.date.getISOWeek(date); } }
+            ];
+        } else if (mode === 'Quarter') {
+            gantt.config.scales = [
+                { unit: 'year', step: 1, format: '%Y' },
+                { unit: 'quarter', step: 1, format: function (date) { return 'Q' + (Math.floor(date.getMonth() / 3) + 1); } },
+                { unit: 'month', step: 1, format: '%M' }
+            ];
+        } else {
+            gantt.config.scales = [
+                { unit: 'year', step: 1, format: '%Y' },
+                { unit: 'month', step: 1, format: '%F' }
+            ];
+        }
+        gantt.render();
+    }
+
+    gantt.init('projectGanttChart');
+    gantt.parse({ data: data, links: links });
+    gantt.addMarker({ start_date: new Date(), css: 'today-marker', text: 'Today', title: 'Today' });
+    setScale('Month');
+
+    $('.gantt-scale-btn').on('click', function () {
+        $('.gantt-scale-btn').removeClass('active');
+        $(this).addClass('active');
+        setScale($(this).data('scale'));
+    });
+});
+</script>
+<style>
+.project-gantt-chart {
+    width: 100%;
+    height: 78vh;
+    min-height: 680px;
+}
+
+.gantt-toolbar {
+    padding: 1rem 1rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.gantt-toolbar-title {
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.gantt-owner-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    font-size: .9rem;
+}
+
+.gantt_grid .gantt_cell.tree,
+.gantt_grid .gantt_tree_content {
+    white-space: nowrap;
+}
+
+.gantt_grid .gantt_tree_content {
+    cursor: pointer;
+}
+
+.gantt_grid .gantt_tree_icon,
+.gantt_task_row,
+.gantt-clickable-row .gantt_cell {
+    cursor: default;
+}
+
+.gantt_task_line.gantt-phase,
+.gantt_task_line.gantt-phase .gantt_task_progress {
+    background: linear-gradient(90deg, #14b8a6 0%, #0f766e 100%);
+    border-color: #0f766e;
+}
+
+.gantt_task_line.gantt-activity,
+.gantt_task_line.gantt-activity .gantt_task_progress {
+    background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+    border-color: #2563eb;
+}
+
+.gantt_task_line.gantt-task,
+.gantt_task_line.gantt-task .gantt_task_progress {
+    background: linear-gradient(90deg, #818cf8 0%, #7c3aed 100%);
+    border-color: #7c3aed;
+}
+
+.gantt-phase-row .gantt_cell,
+.gantt-phase-row .gantt_tree_content {
+    font-weight: 700;
+}
+
+.gantt-activity-row .gantt_tree_content {
+    color: #2563eb;
+}
+
+.today-marker {
+    background: #ef4444;
+    opacity: .85;
+}
+
+.today-marker .gantt_marker_content {
+    background: #ef4444;
+    color: #fff;
+    border-radius: .35rem;
+    padding: .1rem .35rem;
+}
+
+.gantt-detail-offcanvas {
+    width: min(660px, 92vw);
+}
+
+.gantt-detail-entity-label {
+    color: #64748b;
+    font-size: .82rem;
+    font-weight: 700;
+    margin-bottom: .25rem;
+}
+
+.gantt-detail-summary-card,
+.gantt-detail-section,
+.gantt-edit-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .04);
+}
+
+.gantt-detail-summary-card {
+    padding: 1rem;
+}
+
+.gantt-detail-summary-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: .9rem;
+}
+
+.gantt-detail-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+}
+
+.gantt-summary-item {
+    padding: .75rem;
+    border-radius: .85rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.gantt-summary-item span {
+    font-size: .78rem;
+    color: #64748b;
+}
+
+.gantt-summary-item strong {
+    color: #0f172a;
+    font-size: .95rem;
+}
+
+.gantt-detail-section {
+    padding: 1rem;
+}
+
+.gantt-detail-section-title {
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: .75rem;
+}
+
+.gantt-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.gantt-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .35rem .7rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    font-size: .82rem;
+    font-weight: 600;
+}
+
+.gantt-detail-list li {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .45rem 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.gantt-detail-list li:last-child {
+    border-bottom: 0;
+}
+
+.gantt-detail-list a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.gantt-detail-list a:hover {
+    text-decoration: underline;
+}
+
+.gantt-detail-notes {
+    white-space: pre-wrap;
+    color: #334155;
+    line-height: 1.8;
+}
+
+.gantt-edit-section {
+    padding: 1rem;
+}
+
+.gantt-form-section .form-label {
+    font-weight: 600;
+    color: #334155;
+}
+
+.gantt-multi-select {
+    min-height: 9rem;
+}
+
+.gantt-detail-footer {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+@@media (max-width: 767.98px) {
+    .project-gantt-chart {
+        min-height: 560px;
+        height: 70vh;
+    }
+
+    .gantt-detail-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gantt-detail-offcanvas {
+        width: 100vw;
+    }
+
+    .gantt-detail-footer {
+        flex-wrap: wrap;
+    }
+}
+</style>
+}

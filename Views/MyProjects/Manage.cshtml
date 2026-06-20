@@ -1,0 +1,1638 @@
+@model ProjectManagementApp.Models.ManageMyProjectViewModel
+@inject ProjectManagementApp.Services.ILocalizationService Localization
+@{
+    ViewData["Title"] = Localization.GetString("Manage") + " - " + Model.ProjectName;
+    var availableActivitiesJson = Json.Serialize(Model.AvailableProjectActivities);
+    var availableTaskDependenciesJson = Json.Serialize(Model.AvailableTaskDependencyOptions);
+    var taskChecklistLookup = Model.Phases
+        .SelectMany(x => x.Activities)
+        .SelectMany(x => x.Tasks)
+        .ToDictionary(
+            x => x.PhaseTaskId,
+            x => x.ChecklistItems.Select(c => new
+            {
+                c.PhaseTaskChecklistItemId,
+                c.Title,
+                c.IsCompleted,
+                c.SortOrder
+            }).ToList());
+    var taskChecklistJson = Json.Serialize(taskChecklistLookup);
+    var taskLinkLookup = Model.Phases
+        .SelectMany(x => x.Activities)
+        .SelectMany(x => x.Tasks)
+        .ToDictionary(
+            x => x.PhaseTaskId,
+            x => x.FileLinks.Select(l => new
+            {
+                l.PhaseTaskLinkItemId,
+                l.FileName,
+                l.FileUrl,
+                l.SortOrder
+            }).ToList());
+    var taskLinkJson = Json.Serialize(taskLinkLookup);
+    var isRtl = Localization.IsRtl();
+}
+
+<div class="app-content-header">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-sm-6"><h3 class="mb-0">@Localization.GetString("Manage") - @Model.ProjectName</h3></div>
+            <div class="col-sm-6">
+                <ol class="breadcrumb float-sm-end">
+                    <li class="breadcrumb-item"><a href="~/MyProjects/ApprovedProjects">@Localization.GetString("Home")</a></li>
+                    <li class="breadcrumb-item"><a href="@Url.Action("ApprovedProjects", "MyProjects")">@Localization.GetString("ApprovedProjects")</a></li>
+                    <li class="breadcrumb-item active">@Localization.GetString("ProjectPhases")</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="app-content">
+    <div class="container-fluid">
+        @Html.AntiForgeryToken()
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div></div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <a class="btn btn-outline-primary" href="@Url.Action("GanttChart", "MyProjects", new { projectId = Model.ProjectId })">
+                            <i class="bi bi-bar-chart-steps"></i> @Localization.GetString("GanttChart")
+                        </a>
+                        @if (Model.CanManagePhases)
+                        {
+                        <button type="button" class="btn btn-primary" id="btnOpenPhaseModal">
+                            <i class="bi bi-plus-lg"></i> @Localization.GetString("AddProjectPhase")
+                        </button>
+                        }
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-4"><strong>@Localization.GetString("ProjectName"):</strong> @Model.ProjectName</div>
+                    <div class="col-md-4"><strong>@Localization.GetString("ProjectType"):</strong> @(Model.ProjectTypeText ?? "-")</div>
+                    <div class="col-md-4"><strong>@Localization.GetString("Department"):</strong> @(Model.DepartmentName ?? "-")</div>
+                    <div class="col-md-4"><strong>@Localization.GetString("Responsible"):</strong> @(Model.ResponsibleUserName ?? "-")</div>
+                </div>
+            </div>
+        </div>
+
+        @if (!Model.Phases.Any())
+        {
+            <div class="alert alert-info">@Localization.GetString("NoProjectPhases")</div>
+        }
+        else
+        {
+            foreach (var phase in Model.Phases)
+            {
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="phase-card-icon"><i class="bi bi-diagram-3"></i></span>
+                            <h5 class="mb-0">@phase.PhaseName</h5>
+                            <span class="badge text-bg-light border phase-count-badge">@phase.Activities.Count @Localization.GetString("Activity")</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped align-middle phase-table w-100">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60px;"></th>
+                                        <th>@Localization.GetString("DisplayOrder")</th>
+                                        <th>@Localization.GetString("PhaseName")</th>
+                                        <th>@Localization.GetString("PhaseCode")</th>
+                                        <th>@Localization.GetString("PhaseStatus")</th>
+                                        <th>@Localization.GetString("PlannedStartDate")</th>
+                                        <th>@Localization.GetString("PlannedEndDate")</th>
+                                        <th>@Localization.GetString("ActualStartDate")</th>
+                                        <th>@Localization.GetString("ActualEndDate")</th>
+                                        <th>@Localization.GetString("Actions")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="phase-master-row">
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary phase-toggle-btn" data-phase-target="phase-details-@phase.PhaseId" aria-expanded="false" title="@Localization.GetString("View")">
+                                                <i class="bi bi-folder2"></i>
+                                                <span class="toggle-btn-text">@Localization.GetString("Activity")</span>
+                                            </button>
+                                        </td>
+                                        <td>@phase.DisplayOrder</td>
+                                        <td>@phase.PhaseName</td>
+                                        <td>@(phase.PhaseCode ?? "-")</td>
+                                        <td>@phase.PhaseStatus</td>
+                                        <td>@(phase.PlannedStartDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                        <td>@(phase.PlannedEndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                        <td>@(phase.ActualStartDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                        <td>@(phase.ActualEndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                        <td class="text-nowrap">
+                                            <button type="button" class="btn btn-sm btn-primary btn-phase-add-activity" data-phase-id="@phase.PhaseId" data-phase-name="@phase.PhaseName">
+                                                <i class="bi bi-plus-lg"></i> @Localization.GetString("Add") @Localization.GetString("Activity")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr id="phase-details-@phase.PhaseId" class="phase-details-row d-none">
+                                        <td colspan="10" class="p-0 border-0">
+                                            <div class="phase-details-panel p-3">
+                                                <div class="details-panel-header mb-3">
+                                                    <div class="details-panel-title">
+                                                        <i class="bi bi-list-task"></i>
+                                                        <span>@Localization.GetString("ProjectActivities")</span>
+                                                    </div>
+                                                    <span class="badge rounded-pill text-bg-primary">@phase.Activities.Count</span>
+                                                </div>
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm table-bordered align-middle mb-0 phase-activities-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="width:60px;"></th>
+                                                                <th>@Localization.GetString("ReferenceNumber")</th>
+                                                                <th>@Localization.GetString("Activity")</th>
+                                                                <th>@Localization.GetString("Indicator")</th>
+                                                                <th>@Localization.GetString("EstimatedCost")</th>
+                                                                <th>@Localization.GetString("TargetValue")</th>
+                                                                <th>@Localization.GetString("VerificationSource")</th>
+                                                                <th>@Localization.GetString("StartDate")</th>
+                                                                <th>@Localization.GetString("EndDate")</th>
+                                                                <th>@Localization.GetString("Actions")</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @if (phase.Activities.Any())
+                                                            {
+                                                                foreach (var activity in phase.Activities)
+                                                                {
+                                                                    <tr class="activity-master-row">
+                                                                        <td class="text-center">
+                                                                            <button type="button" class="btn btn-sm btn-outline-secondary activity-toggle-btn" data-activity-target="activity-details-@activity.PhaseActivityId" aria-expanded="false" title="@Localization.GetString("View")">
+                                                                                <i class="bi bi-folder2"></i>
+                                                                                <span class="toggle-btn-text">@Localization.GetString("TaskName")</span>
+                                                                            </button>
+                                                                        </td>
+                                                                        <td>@(activity.ReferenceNumber ?? "-")</td>
+                                                                        <td>
+                                                                            <div class="activity-name-cell">
+                                                                                <span>@activity.ActivityName</span>
+                                                                                <span class="badge rounded-pill text-bg-light border">@activity.Tasks.Count</span>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td>@(activity.IndicatorName ?? "-")</td>
+                                                                        <td>@(activity.EstimatedCost?.ToString("0.##") ?? "-")</td>
+                                                                        <td>@(activity.TargetValue ?? "-")</td>
+                                                                        <td>@(activity.VerificationSource ?? "-")</td>
+                                                                        <td>@(activity.StartDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                                                        <td>@(activity.EndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                                                        <td class="text-nowrap">
+                                                                            <button type="button" class="btn btn-sm btn-outline-info btn-phase-activity-edit"
+                                                                                    data-phase-activity-id="@activity.PhaseActivityId"
+                                                                                    data-phase-id="@activity.PhaseId"
+                                                                                    data-source-activity-id="@activity.SourceActivityId"
+                                                                                    data-reference-number="@activity.ReferenceNumber"
+                                                                                    data-activity-name="@activity.ActivityName"
+                                                                                    data-indicator-name="@activity.IndicatorName"
+                                                                                    data-estimated-cost="@(activity.EstimatedCost?.ToString("0.##") ?? string.Empty)"
+                                                                                    data-target-value="@activity.TargetValue"
+                                                                                    data-verification-source="@activity.VerificationSource"
+                                                                                    data-start-date="@(activity.StartDate?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                                                    data-end-date="@(activity.EndDate?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                                                    data-risks-and-assumptions="@activity.RisksAndAssumptions">
+                                                                                <i class="bi bi-pencil-square"></i> @Localization.GetString("Edit")
+                                                                            </button>
+                                                                            <button type="button" class="btn btn-sm btn-primary btn-phase-activity-add-task" data-phase-activity-id="@activity.PhaseActivityId" data-activity-name="@activity.ActivityName">
+                                                                                <i class="bi bi-plus-lg"></i> @Localization.GetString("AddTask")
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr id="activity-details-@activity.PhaseActivityId" class="activity-details-row d-none">
+                                                                        <td colspan="11" class="p-0 border-0">
+                                                                            <div class="activity-details-panel p-3">
+                                                                                <div class="details-panel-header mb-3">
+                                                                                    <div class="details-panel-title">
+                                                                                        <i class="bi bi-check2-square"></i>
+                                                                                        <span>@Localization.GetString("AddTask")</span>
+                                                                                    </div>
+                                                                                    <span class="badge rounded-pill text-bg-success">@activity.Tasks.Count</span>
+                                                                                </div>
+                                                                                <div class="table-responsive">
+                                                                                    <div class="task-table-hint mb-2">@Localization.GetString("ClickRowToViewTaskDetails")</div>
+                                                                                    <table class="table table-sm table-bordered align-middle mb-0 phase-tasks-table">
+                                                                                        <thead>
+                                                                                            <tr>
+                                                                                                <th>@Localization.GetString("TaskName")</th>
+                                                                                                <th>@Localization.GetString("AssignedTo")</th>
+                                                                                                <th>@Localization.GetString("StartDate")</th>
+                                                                                                <th>@Localization.GetString("EndDate")</th>
+                                                                                                <th>@Localization.GetString("Priority")</th>
+                                                                                                <th>@Localization.GetString("PercentComplete")</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            @if (activity.Tasks.Any())
+                                                                                            {
+                                                                                                foreach (var task in activity.Tasks)
+                                                                                                {
+                                                                                                    var priorityCssClass = string.Equals(task.Priority, "High", StringComparison.OrdinalIgnoreCase)
+                                                                                                        ? "priority-high"
+                                                                                                        : string.Equals(task.Priority, "Low", StringComparison.OrdinalIgnoreCase)
+                                                                                                            ? "priority-low"
+                                                                                                            : "priority-medium";
+                                                                                                    var priorityText = Localization.GetString(string.IsNullOrWhiteSpace(task.Priority) ? "Medium" : task.Priority);
+                                                                                                    var assignedEmployeeIds = string.Join(",", task.Assignees.Select(x => x.EmployeeId));
+                                                                                                    <tr class="task-clickable-row"
+                                                                                                        data-phase-task-id="@task.PhaseTaskId"
+                                                                                                        data-phase-activity-id="@task.PhaseActivityId"
+                                                                                                        data-task-name="@task.TaskName"
+                                                                                                        data-start-date="@(task.StartDate?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                                                                        data-end-date="@(task.EndDate?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                                                                        data-priority="@task.Priority"
+                                                                                                        data-percent-complete="@task.PercentComplete"
+                                                                                                        data-notes="@task.Notes"
+                                                                                                        data-activity-name="@activity.ActivityName"
+                                                                                                        data-dependent-on-phase-task-id="@task.DependentOnPhaseTaskId"
+                                                                                                        data-dependency-type="@task.DependencyType"
+                                                                                                        data-assigned-employee-ids="@assignedEmployeeIds">
+                                                                                                        <td>
+                                                                                                            <div class="task-name-with-status">
+                                                                                                                <span>@task.TaskName</span>
+                                                                                                                @if (task.DependentOnPhaseTaskId.HasValue)
+                                                                                                                {
+                                                                                                                    <span class="task-dependency-indicator" title="@Localization.GetString("HasDependency")">
+                                                                                                                        <i class="bi bi-link-45deg"></i>
+                                                                                                                    </span>
+                                                                                                                }
+                                                                                                            </div>
+                                                                                                        </td>
+                                                                                                        <td>@(task.Assignees.Any() ? string.Join("? ", task.Assignees.Select(x => x.EmployeeName)) : "-")</td>
+                                                                                                        <td>@(task.StartDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                                                                                        <td>@(task.EndDate?.ToString("yyyy-MM-dd") ?? "-")</td>
+                                                                                                        <td class="priority-cell">
+                                                                                                            <span class="priority-badge @priorityCssClass">@priorityText</span>
+                                                                                                        </td>
+                                                                                                        <td>
+                                                                                                            <div class="task-progress-inline">
+                                                                                                                <div class="progress task-progress-bar-wrap">
+                                                                                                                    <div class="progress-bar task-progress-bar" role="progressbar" style="width:@task.PercentComplete%;" aria-valuenow="@task.PercentComplete" aria-valuemin="0" aria-valuemax="100"></div>
+                                                                                                                </div>
+                                                                                                                <span class="task-progress-text">@task.PercentComplete%</span>
+                                                                                                            </div>
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                }
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <tr>
+                                                                                                    <td colspan="6" class="text-center text-muted py-3">@Localization.GetString("NoDataAvailable")</td>
+                                                                                                </tr>
+                                                                                            }
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                <tr>
+                                                                    <td colspan="10" class="text-center text-muted py-3">@Localization.GetString("NoDataAvailable")</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<div class="modal fade" id="phaseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@Localization.GetString("AddProjectPhase")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("PhaseName")</label>
+                        <input type="text" id="phaseName" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("PhaseCode")</label>
+                        <input type="text" id="phaseCode" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@Localization.GetString("DisplayOrder")</label>
+                        <input type="number" id="displayOrder" class="form-control" min="1" value="1" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@Localization.GetString("PhaseStatus")</label>
+                        <select id="phaseStatus" class="form-select">
+                            <option value="NotStarted">@Localization.GetString("NotStarted")</option>
+                            <option value="InProgress">@Localization.GetString("InProgress")</option>
+                            <option value="OnHold">@Localization.GetString("OnHold")</option>
+                            <option value="Completed">@Localization.GetString("Completed")</option>
+                            <option value="Cancelled">@Localization.GetString("Cancelled")</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@Localization.GetString("PlannedStartDate")</label>
+                        <input type="date" id="plannedStartDate" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@Localization.GetString("PlannedEndDate")</label>
+                        <input type="date" id="plannedEndDate" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("ActualStartDate")</label>
+                        <input type="date" id="actualStartDate" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("ActualEndDate")</label>
+                        <input type="date" id="actualEndDate" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">@Localization.GetString("Notes")</label>
+                        <textarea id="phaseNotes" class="form-control" rows="4"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localization.GetString("Cancel")</button>
+                <button type="button" id="btnSavePhase" class="btn btn-primary">@Localization.GetString("Save")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="phaseActivityModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="phaseActivityModalTitle">@Localization.GetString("Add") @Localization.GetString("Activity")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="phaseActivityId" />
+                <input type="hidden" id="phaseActivityPhaseId" />
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">@Localization.GetString("SelectExistingActivity")</label>
+                        <select id="sourceActivityId" class="form-select">
+                            <option value="">@Localization.GetString("SelectExistingActivity")</option>
+                            @foreach (var activity in Model.AvailableProjectActivities)
+                            {
+                                <option value="@activity.ActivityId">@activity.ActivityName</option>
+                            }
+                        </select>
+                        <small class="text-muted">@Localization.GetString("IndependentActivityHint")</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("ReferenceNumber")</label>
+                        <input type="text" id="phaseActivityReferenceNumber" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("Activity")</label>
+                        <input type="text" id="phaseActivityName" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("Indicator")</label>
+                        <input type="text" id="phaseActivityIndicatorName" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("EstimatedCost")</label>
+                        <input type="number" id="phaseActivityEstimatedCost" class="form-control" step="0.01" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("TargetValue")</label>
+                        <input type="text" id="phaseActivityTargetValue" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("VerificationSource")</label>
+                        <input type="text" id="phaseActivityVerificationSource" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("StartDate")</label>
+                        <input type="date" id="phaseActivityStartDate" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("EndDate")</label>
+                        <input type="date" id="phaseActivityEndDate" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">@Localization.GetString("RisksAndAssumptions")</label>
+                        <textarea id="phaseActivityRisksAndAssumptions" class="form-control" rows="4"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localization.GetString("Cancel")</button>
+                <button type="button" id="btnSavePhaseActivity" class="btn btn-primary">@Localization.GetString("Save")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="phaseTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="phaseTaskModalTitle">@Localization.GetString("AddTask")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="phaseTaskId" />
+                <input type="hidden" id="phaseTaskActivityId" />
+                <div class="row g-3">
+                    <div class="col-md-8">
+                        <label class="form-label">@Localization.GetString("TaskName")</label>
+                        <input type="text" id="phaseTaskName" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@Localization.GetString("Priority")</label>
+                        <select id="phaseTaskPriority" class="form-select task-priority-select">
+                            <option value="Low">@Localization.GetString("Low")</option>
+                            <option value="Medium" selected>@Localization.GetString("Medium")</option>
+                            <option value="High">@Localization.GetString("High")</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("StartDate")</label>
+                        <input type="date" id="phaseTaskStartDate" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("EndDate")</label>
+                        <input type="date" id="phaseTaskEndDate" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("PercentComplete")</label>
+                        <input type="number" id="phaseTaskPercentComplete" class="form-control" min="0" max="100" value="0" />
+                        <div class="task-progress-preview mt-2">
+                            <div class="progress task-progress-bar-wrap">
+                                <div id="phaseTaskProgressBar" class="progress-bar task-progress-bar" role="progressbar" style="width:0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                            <span id="phaseTaskProgressText" class="task-progress-text">0%</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("AssignedTo")</label>
+                        <select id="phaseTaskAssignedEmployeeIds" class="form-select" multiple style="width:100%;">
+                            @foreach (var assignee in Model.AvailableTaskAssignees)
+                            {
+                                <option value="@assignee.EmployeeId">@assignee.EmployeeName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@Localization.GetString("Activity")</label>
+                        <input type="text" id="phaseTaskBucketName" class="form-control" readonly />
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="button" id="btnOpenTaskLinkModal" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-link-45deg"></i> @Localization.GetString("AddFile")
+                        </button>
+                    </div>
+                    <div class="col-12">
+                        <div class="link-card">
+                            <div class="link-card-header">
+                                <span class="link-card-title">@Localization.GetString("Links")</span>
+                            </div>
+                            <div id="phaseTaskLinksEmptyState" class="text-muted small">@Localization.GetString("NoDataAvailable")</div>
+                            <ul id="phaseTaskLinksList" class="task-link-list list-unstyled mb-0"></ul>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="phaseTaskHasDependency">
+                            <label class="form-check-label" for="phaseTaskHasDependency">@Localization.GetString("Dependencies")</label>
+                        </div>
+                    </div>
+                    <div id="phaseTaskDependencyPanel" class="col-12 d-none">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">@Localization.GetString("SelectDependencyTask")</label>
+                                <select id="phaseTaskDependentOnTaskId" class="form-select">
+                                    <option value="">@Localization.GetString("SelectDependencyTask")</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">@Localization.GetString("DependencyType")</label>
+                                <select id="phaseTaskDependencyType" class="form-select">
+                                    <option value="">@Localization.GetString("DependencyType")</option>
+                                    <option value="StartToStart">@Localization.GetString("StartToStart")</option>
+                                    <option value="StartToFinish">@Localization.GetString("StartToFinish")</option>
+                                    <option value="FinishToStart">@Localization.GetString("FinishToStart")</option>
+                                    <option value="FinishToFinish">@Localization.GetString("FinishToFinish")</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">@Localization.GetString("Notes")</label>
+                        <textarea id="phaseTaskNotes" class="form-control" rows="4"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="checklist-card">
+                            <div class="checklist-header">
+                                <div class="checklist-title-wrap">
+                                    <button type="button" class="btn btn-link checklist-collapse-btn p-0" id="btnToggleChecklistSection">
+                                        <i class="bi bi-chevron-down"></i>
+                                    </button>
+                                    <span class="checklist-title">@Localization.GetString("Checklist")</span>
+                                    <span id="phaseTaskChecklistSummary" class="checklist-summary-text">0 / 0</span>
+                                </div>
+                                <div class="checklist-progress-wrap">
+                                    <div class="progress checklist-progress-bar-wrap">
+                                        <div id="phaseTaskChecklistProgressBar" class="progress-bar checklist-progress-bar" role="progressbar" style="width:0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="phaseTaskChecklistSection" class="checklist-body mt-3">
+                                <div class="input-group mb-3">
+                                    <input type="text" id="phaseTaskChecklistNewItem" class="form-control" placeholder="@Localization.GetString("ChecklistItemPlaceholder")" />
+                                    <button type="button" id="btnAddChecklistItem" class="btn btn-outline-primary">@Localization.GetString("AddChecklistItem")</button>
+                                </div>
+                                <div id="phaseTaskChecklistEmptyState" class="checklist-empty-state text-muted">@Localization.GetString("NoDataAvailable")</div>
+                                <ul id="phaseTaskChecklistItems" class="checklist-items list-unstyled mb-0"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localization.GetString("Cancel")</button>
+                <button type="button" id="btnSavePhaseTask" class="btn btn-primary">@Localization.GetString("Save")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="taskLinkModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@Localization.GetString("AddFile")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="taskLinkItemId" />
+                <div class="mb-3">
+                    <label class="form-label">@Localization.GetString("FileName")</label>
+                    <input type="text" id="taskLinkFileName" class="form-control" />
+                </div>
+                <div>
+                    <label class="form-label">@Localization.GetString("FileUrl")</label>
+                    <input type="url" id="taskLinkFileUrl" class="form-control" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">@Localization.GetString("Cancel")</button>
+                <button type="button" id="btnAddTaskLink" class="btn btn-primary">@Localization.GetString("Add")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+$(function () {
+    const phaseModalElement = document.getElementById('phaseModal');
+    const phaseModal = phaseModalElement ? new bootstrap.Modal(phaseModalElement) : null;
+    const phaseActivityModalElement = document.getElementById('phaseActivityModal');
+    const phaseActivityModal = phaseActivityModalElement ? new bootstrap.Modal(phaseActivityModalElement) : null;
+    const phaseTaskModalElement = document.getElementById('phaseTaskModal');
+    const phaseTaskModal = phaseTaskModalElement ? new bootstrap.Modal(phaseTaskModalElement) : null;
+    const taskLinkModalElement = document.getElementById('taskLinkModal');
+    const taskLinkModal = taskLinkModalElement ? new bootstrap.Modal(taskLinkModalElement) : null;
+    const savePhaseUrl = '@Url.Action("SavePhase", "MyProjects")';
+    const savePhaseActivityUrl = '@Url.Action("SavePhaseActivity", "MyProjects")';
+    const savePhaseTaskUrl = '@Url.Action("SavePhaseTask", "MyProjects")';
+    const projectId = '@Model.ProjectId';
+    const availableActivities = @Html.Raw(availableActivitiesJson);
+    const availableTaskDependencies = @Html.Raw(availableTaskDependenciesJson);
+    const taskChecklistLookup = @Html.Raw(taskChecklistJson);
+    const taskLinkLookup = @Html.Raw(taskLinkJson);
+    const isRtl = @Json.Serialize(isRtl);
+    let draggedChecklistItem = null;
+
+    function toDateInput(value) {
+        return value ? String(value).substring(0, 10) : '';
+    }
+
+    function resetPhaseActivityForm() {
+        $('#phaseActivityId').val('');
+        $('#phaseActivityPhaseId').val('');
+        $('#sourceActivityId').val('');
+        $('#phaseActivityReferenceNumber').val('');
+        $('#phaseActivityName').val('');
+        $('#phaseActivityIndicatorName').val('');
+        $('#phaseActivityEstimatedCost').val('');
+        $('#phaseActivityTargetValue').val('');
+        $('#phaseActivityVerificationSource').val('');
+        $('#phaseActivityStartDate').val('');
+        $('#phaseActivityEndDate').val('');
+        $('#phaseActivityRisksAndAssumptions').val('');
+    }
+
+    function openPhaseActivityEditModal(button) {
+        resetPhaseActivityForm();
+        $('#phaseActivityId').val(String(button.data('phase-activity-id') || ''));
+        $('#phaseActivityPhaseId').val(String(button.data('phase-id') || ''));
+        $('#sourceActivityId').val(button.data('source-activity-id') ? String(button.data('source-activity-id')) : '');
+        $('#phaseActivityReferenceNumber').val(button.data('reference-number') || '');
+        $('#phaseActivityName').val(button.data('activity-name') || '');
+        $('#phaseActivityIndicatorName').val(button.data('indicator-name') || '');
+        $('#phaseActivityEstimatedCost').val(button.data('estimated-cost') || '');
+        $('#phaseActivityTargetValue').val(button.data('target-value') || '');
+        $('#phaseActivityVerificationSource').val(button.data('verification-source') || '');
+        $('#phaseActivityStartDate').val(button.data('start-date') || '');
+        $('#phaseActivityEndDate').val(button.data('end-date') || '');
+        $('#phaseActivityRisksAndAssumptions').val(button.data('risks-and-assumptions') || '');
+        $('#phaseActivityModalTitle').text(@Json.Serialize(Localization.GetString("Edit")) + ' ' + @Json.Serialize(Localization.GetString("Activity")) + ' - ' + ($('#phaseActivityName').val() || ''));
+        phaseActivityModal?.show();
+    }
+
+    function fillPhaseActivityFromTemplate(activity) {
+        if (!activity) {
+            $('#phaseActivityReferenceNumber').val('');
+            return;
+        }
+
+        $('#phaseActivityReferenceNumber').val(activity.ActivityId || '');
+        $('#phaseActivityName').val(activity.ActivityName || '');
+        $('#phaseActivityIndicatorName').val(activity.IndicatorName || '');
+        $('#phaseActivityEstimatedCost').val(activity.EstimatedCost ?? '');
+        $('#phaseActivityTargetValue').val(activity.TargetValue || '');
+        $('#phaseActivityVerificationSource').val(activity.VerificationSource || '');
+        $('#phaseActivityStartDate').val(toDateInput(activity.StartDate));
+        $('#phaseActivityEndDate').val(toDateInput(activity.EndDate));
+        $('#phaseActivityRisksAndAssumptions').val(activity.RisksAndAssumptions || '');
+    }
+
+    function resetPhaseTaskForm() {
+        $('#phaseTaskId').val('');
+        $('#phaseTaskActivityId').val('');
+        $('#phaseTaskName').val('');
+        $('#phaseTaskStartDate').val('');
+        $('#phaseTaskEndDate').val('');
+        $('#phaseTaskPriority').val('Medium');
+        $('#phaseTaskPercentComplete').val('0');
+        $('#phaseTaskNotes').val('');
+        $('#phaseTaskBucketName').val('');
+        $('#phaseTaskAssignedEmployeeIds').val(null).trigger('change');
+        $('#phaseTaskHasDependency').prop('checked', false);
+        $('#phaseTaskDependentOnTaskId').empty().append(new Option(@Json.Serialize(Localization.GetString("SelectDependencyTask")), ''));
+        $('#phaseTaskDependencyType').val('');
+        $('#phaseTaskChecklistSection').removeClass('d-none');
+        $('#btnToggleChecklistSection i').removeClass('bi-chevron-up').addClass('bi-chevron-down');
+        toggleTaskDependencyPanel();
+        renderChecklistItems([]);
+        renderTaskLinks([]);
+        updateTaskPriorityAppearance();
+        updateTaskProgressPreview();
+    }
+
+    function resetTaskLinkForm() {
+        $('#taskLinkItemId').val('');
+        $('#taskLinkFileName').val('');
+        $('#taskLinkFileUrl').val('');
+    }
+
+    function getTaskLinks(taskId) {
+        const items = taskLinkLookup[String(taskId)] || taskLinkLookup[taskId] || [];
+        return items.map(function (item, index) {
+            return {
+                phaseTaskLinkItemId: item.PhaseTaskLinkItemId || 0,
+                fileName: item.FileName || '',
+                fileUrl: item.FileUrl || '',
+                sortOrder: item.SortOrder || (index + 1)
+            };
+        });
+    }
+
+    function renderTaskLinks(items) {
+        const list = $('#phaseTaskLinksList');
+        list.empty();
+
+        (items || [])
+            .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); })
+            .forEach(function (item) {
+                const listItem = $('<li class="task-link-item"></li>');
+                listItem.attr('data-link-id', item.phaseTaskLinkItemId || 0);
+                listItem.append('<a class="task-link-anchor" href="' + item.fileUrl + '" target="_blank" rel="noopener noreferrer">' + item.fileName + '</a>');
+                const deleteButton = $('<button type="button" class="btn btn-sm btn-link text-danger task-link-delete"><i class="bi bi-trash"></i></button>');
+                deleteButton.on('click', function () {
+                    listItem.remove();
+                    $('#phaseTaskLinksEmptyState').toggleClass('d-none', $('#phaseTaskLinksList .task-link-item').length > 0);
+                });
+                listItem.append(deleteButton);
+                list.append(listItem);
+            });
+
+        $('#phaseTaskLinksEmptyState').toggleClass('d-none', list.children().length > 0);
+    }
+
+    function getTaskLinksPayload() {
+        return $('#phaseTaskLinksList .task-link-item').map(function (index, element) {
+            const item = $(element);
+            const anchor = item.find('.task-link-anchor');
+            return {
+                phaseTaskLinkItemId: parseInt(item.attr('data-link-id') || '0', 10),
+                fileName: anchor.text(),
+                fileUrl: anchor.attr('href') || '',
+                sortOrder: index + 1
+            };
+        }).get();
+    }
+
+    function getTaskChecklistItems(taskId) {
+        const items = taskChecklistLookup[String(taskId)] || taskChecklistLookup[taskId] || [];
+        return items.map(function (item, index) {
+            return {
+                phaseTaskChecklistItemId: item.PhaseTaskChecklistItemId || 0,
+                title: item.Title || '',
+                isCompleted: !!item.IsCompleted,
+                sortOrder: item.SortOrder || (index + 1)
+            };
+        });
+    }
+
+    function updateChecklistSummary() {
+        const rows = $('#phaseTaskChecklistItems .checklist-item');
+        const total = rows.length;
+        const completed = rows.find('.checklist-item-checkbox:checked').length;
+        const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+        $('#phaseTaskChecklistSummary').text(completed + ' / ' + total);
+        $('#phaseTaskChecklistProgressBar').css('width', percent + '%').attr('aria-valuenow', percent);
+        $('#phaseTaskChecklistEmptyState').toggleClass('d-none', total > 0);
+    }
+
+    function createChecklistItemElement(item) {
+        const listItem = $(
+            '<li class="checklist-item" draggable="true">'
+            + '<div class="checklist-item-handle" title="Drag"><i class="bi bi-grip-vertical"></i></div>'
+            + '<div class="form-check checklist-item-check">'
+            + '<input class="form-check-input checklist-item-checkbox" type="checkbox" />'
+            + '</div>'
+            + '<input type="text" class="form-control checklist-item-title" />'
+            + '<button type="button" class="btn btn-sm btn-link text-danger checklist-item-delete"><i class="bi bi-trash"></i></button>'
+            + '</li>');
+
+        listItem.attr('data-checklist-id', item.phaseTaskChecklistItemId || 0);
+        listItem.find('.checklist-item-checkbox').prop('checked', !!item.isCompleted);
+        listItem.find('.checklist-item-title').val(item.title || '');
+        listItem.toggleClass('is-complete', !!item.isCompleted);
+
+        listItem.find('.checklist-item-checkbox').on('change', function () {
+            listItem.toggleClass('is-complete', $(this).is(':checked'));
+            updateChecklistSummary();
+        });
+
+        listItem.find('.checklist-item-delete').on('click', function () {
+            listItem.remove();
+            updateChecklistSummary();
+        });
+
+        listItem.on('dragstart', function (e) {
+            draggedChecklistItem = this;
+            $(this).addClass('dragging');
+            e.originalEvent.dataTransfer.effectAllowed = 'move';
+        });
+
+        listItem.on('dragend', function () {
+            draggedChecklistItem = null;
+            $('#phaseTaskChecklistItems .checklist-item').removeClass('dragging');
+            updateChecklistSummary();
+        });
+
+        listItem.on('dragover', function (e) {
+            e.preventDefault();
+            if (!draggedChecklistItem || draggedChecklistItem === this) {
+                return;
+            }
+
+            const bounds = this.getBoundingClientRect();
+            const shouldPlaceAfter = (e.originalEvent.clientY - bounds.top) > bounds.height / 2;
+            if (shouldPlaceAfter) {
+                this.parentNode.insertBefore(draggedChecklistItem, this.nextSibling);
+            } else {
+                this.parentNode.insertBefore(draggedChecklistItem, this);
+            }
+        });
+
+        listItem.on('drop', function (e) {
+            e.preventDefault();
+            updateChecklistSummary();
+        });
+
+        return listItem;
+    }
+
+    function renderChecklistItems(items) {
+        const list = $('#phaseTaskChecklistItems');
+        list.empty();
+
+        (items || [])
+            .sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); })
+            .forEach(function (item) {
+                list.append(createChecklistItemElement(item));
+            });
+
+        updateChecklistSummary();
+    }
+
+    function addChecklistItem(title) {
+        const trimmedTitle = String(title || '').trim();
+        if (!trimmedTitle) {
+            return;
+        }
+
+        const listItem = createChecklistItemElement({
+            phaseTaskChecklistItemId: 0,
+            title: trimmedTitle,
+            isCompleted: false,
+            sortOrder: $('#phaseTaskChecklistItems .checklist-item').length + 1
+        });
+
+        $('#phaseTaskChecklistItems').append(listItem);
+        $('#phaseTaskChecklistNewItem').val('');
+        updateChecklistSummary();
+    }
+
+    function getChecklistItemsPayload() {
+        return $('#phaseTaskChecklistItems .checklist-item').map(function (index, element) {
+            const item = $(element);
+            return {
+                phaseTaskChecklistItemId: parseInt(item.attr('data-checklist-id') || '0', 10),
+                title: item.find('.checklist-item-title').val(),
+                isCompleted: item.find('.checklist-item-checkbox').is(':checked'),
+                sortOrder: index + 1
+            };
+        }).get().filter(function (item) {
+            return item.title && String(item.title).trim() !== '';
+        });
+    }
+
+    function populateTaskDependencyOptions(currentTaskId) {
+        const select = $('#phaseTaskDependentOnTaskId');
+        const currentId = parseInt(currentTaskId || '0', 10);
+        select.empty().append(new Option(@Json.Serialize(Localization.GetString("SelectDependencyTask")), ''));
+
+        availableTaskDependencies
+            .filter(x => x.PhaseTaskId !== currentId)
+            .forEach(function (item) {
+                const phaseName = item.PhaseName || '';
+                const activityName = item.ActivityName || '';
+                const suffix = [phaseName, activityName].filter(Boolean).join(' / ');
+                const text = suffix ? (item.TaskName + ' - ' + suffix) : item.TaskName;
+                select.append(new Option(text, String(item.PhaseTaskId)));
+            });
+    }
+
+    function toggleTaskDependencyPanel() {
+        const enabled = $('#phaseTaskHasDependency').is(':checked');
+        $('#phaseTaskDependencyPanel').toggleClass('d-none', !enabled);
+        if (!enabled) {
+            $('#phaseTaskDependentOnTaskId').val('');
+            $('#phaseTaskDependencyType').val('');
+        }
+    }
+
+    function openTaskDetailsModal(row) {
+        const taskId = row.data('phase-task-id');
+        const activityId = row.data('phase-activity-id');
+        const taskName = row.data('task-name') || '';
+        const activityName = row.data('activity-name') || '';
+        const dependentOnTaskId = row.data('dependent-on-phase-task-id') || '';
+        const dependencyType = row.data('dependency-type') || '';
+        const assignedIds = String(row.data('assigned-employee-ids') || '')
+            .split(',')
+            .filter(x => x)
+            .map(Number);
+
+        $('#phaseTaskId').val(String(taskId || ''));
+        $('#phaseTaskActivityId').val(String(activityId || ''));
+        $('#phaseTaskName').val(taskName);
+        $('#phaseTaskStartDate').val(row.data('start-date') || '');
+        $('#phaseTaskEndDate').val(row.data('end-date') || '');
+        $('#phaseTaskPriority').val(row.data('priority') || 'Medium');
+        $('#phaseTaskPercentComplete').val(String(row.data('percent-complete') || '0'));
+        $('#phaseTaskNotes').val(row.data('notes') || '');
+        $('#phaseTaskBucketName').val(activityName);
+        $('#phaseTaskAssignedEmployeeIds').val(assignedIds.map(String)).trigger('change');
+        populateTaskDependencyOptions(taskId);
+        $('#phaseTaskHasDependency').prop('checked', !!dependentOnTaskId);
+        $('#phaseTaskChecklistSection').removeClass('d-none');
+        $('#btnToggleChecklistSection i').removeClass('bi-chevron-up').addClass('bi-chevron-down');
+        toggleTaskDependencyPanel();
+        $('#phaseTaskDependentOnTaskId').val(dependentOnTaskId ? String(dependentOnTaskId) : '');
+        $('#phaseTaskDependencyType').val(dependencyType ? String(dependencyType) : '');
+        renderChecklistItems(getTaskChecklistItems(taskId));
+        renderTaskLinks(getTaskLinks(taskId));
+        $('#phaseTaskModalTitle').text(@Json.Serialize(Localization.GetString("TaskDetails")) + ' - ' + taskName);
+        updateTaskPriorityAppearance();
+        updateTaskProgressPreview();
+        phaseTaskModal?.show();
+    }
+
+    function updateTaskPriorityAppearance() {
+        const select = $('#phaseTaskPriority');
+        const value = String(select.val() || 'Medium').toLowerCase();
+        select.removeClass('task-priority-low task-priority-medium task-priority-high');
+        select.addClass('task-priority-' + value);
+    }
+
+    function updateTaskProgressPreview() {
+        const rawValue = parseInt($('#phaseTaskPercentComplete').val() || '0', 10);
+        const value = Math.max(0, Math.min(100, Number.isNaN(rawValue) ? 0 : rawValue));
+        $('#phaseTaskPercentComplete').val(String(value));
+        $('#phaseTaskProgressBar').css('width', value + '%').attr('aria-valuenow', value);
+        $('#phaseTaskProgressText').text(value + '%');
+    }
+
+    $('#phaseTaskAssignedEmployeeIds').select2({
+        theme: 'bootstrap-5',
+        dropdownParent: $('#phaseTaskModal'),
+        dir: isRtl ? 'rtl' : 'ltr',
+        width: '100%',
+        placeholder: @Json.Serialize(Localization.GetString("SelectAssignees")),
+        allowClear: true
+    });
+
+    $('#phaseTaskPriority').on('change', updateTaskPriorityAppearance);
+    $('#phaseTaskPercentComplete').on('input change', updateTaskProgressPreview);
+    $('#phaseTaskHasDependency').on('change', toggleTaskDependencyPanel);
+    $('#btnAddChecklistItem').on('click', function () {
+        addChecklistItem($('#phaseTaskChecklistNewItem').val());
+    });
+    $('#phaseTaskChecklistNewItem').on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addChecklistItem($(this).val());
+        }
+    });
+    $('#btnToggleChecklistSection').on('click', function () {
+        $('#phaseTaskChecklistSection').toggleClass('d-none');
+        $(this).find('i').toggleClass('bi-chevron-down bi-chevron-up');
+    });
+    $('#btnOpenTaskLinkModal').on('click', function () {
+        resetTaskLinkForm();
+        taskLinkModal?.show();
+    });
+    $('#btnAddTaskLink').on('click', function () {
+        const fileName = $('#taskLinkFileName').val();
+        const fileUrl = $('#taskLinkFileUrl').val();
+
+        if (!fileName || String(fileName).trim() === '') {
+            Swal.fire({ icon: 'warning', title: @Json.Serialize(Localization.GetString("Error")), text: @Json.Serialize(Localization.GetString("FileNameRequired")) });
+            return;
+        }
+
+        if (!fileUrl || String(fileUrl).trim() === '') {
+            Swal.fire({ icon: 'warning', title: @Json.Serialize(Localization.GetString("Error")), text: @Json.Serialize(Localization.GetString("FileUrlRequired")) });
+            return;
+        }
+
+        const links = getTaskLinksPayload();
+        links.push({
+            phaseTaskLinkItemId: 0,
+            fileName: String(fileName).trim(),
+            fileUrl: String(fileUrl).trim(),
+            sortOrder: links.length + 1
+        });
+        renderTaskLinks(links);
+        taskLinkModal?.hide();
+        resetTaskLinkForm();
+    });
+
+    $('.phase-toggle-btn').on('click', function () {
+        const targetId = $(this).data('phase-target');
+        const detailsRow = $('#' + targetId);
+        const isVisible = !detailsRow.hasClass('d-none');
+        detailsRow.toggleClass('d-none', isVisible);
+        $(this).attr('aria-expanded', (!isVisible).toString());
+        const icon = $(this).find('i');
+        icon.toggleClass('bi-folder2-open bi-folder2');
+        return false;
+    });
+
+    $('.activity-toggle-btn').on('click', function () {
+        const targetId = $(this).data('activity-target');
+        const detailsRow = $('#' + targetId);
+        const isVisible = !detailsRow.hasClass('d-none');
+        detailsRow.toggleClass('d-none', isVisible);
+        $(this).attr('aria-expanded', (!isVisible).toString());
+        const icon = $(this).find('i');
+        icon.toggleClass('bi-folder2-open bi-folder2');
+        return false;
+    });
+
+    $('.btn-phase-add-activity').on('click', function () {
+        resetPhaseActivityForm();
+        const phaseId = $(this).data('phase-id');
+        const phaseName = $(this).data('phase-name');
+        $('#phaseActivityPhaseId').val(String(phaseId));
+        $('#phaseActivityModalTitle').text(@Json.Serialize(Localization.GetString("Add")) + ' ' + @Json.Serialize(Localization.GetString("Activity")) + ' - ' + phaseName);
+        phaseActivityModal?.show();
+    });
+
+    $('#sourceActivityId').on('change', function () {
+        const selectedId = parseInt($(this).val() || '0', 10);
+        if (!selectedId) {
+            $('#phaseActivityReferenceNumber').val('');
+            return;
+        }
+
+        const selectedActivity = availableActivities.find(x => x.ActivityId === selectedId);
+        fillPhaseActivityFromTemplate(selectedActivity);
+    });
+
+    $('#btnOpenPhaseModal').on('click', function () {
+        $('#phaseName, #phaseCode, #plannedStartDate, #plannedEndDate, #actualStartDate, #actualEndDate, #phaseNotes').val('');
+        $('#displayOrder').val('1');
+        $('#phaseStatus').val('NotStarted');
+        phaseModal?.show();
+    });
+
+    $('#btnSavePhase').on('click', async function () {
+        const phaseName = $('#phaseName').val();
+        if (!phaseName || phaseName.trim() === '') {
+            Swal.fire({
+                icon: 'warning',
+                title: @Json.Serialize(Localization.GetString("Error")),
+                text: @Json.Serialize(Localization.GetString("PhaseNameRequired"))
+            });
+            return;
+        }
+
+        const response = await fetch(savePhaseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+            },
+            body: JSON.stringify({
+                projectId: projectId,
+                phaseName: phaseName,
+                phaseCode: $('#phaseCode').val() || null,
+                displayOrder: parseInt($('#displayOrder').val() || '1', 10),
+                phaseStatus: $('#phaseStatus').val(),
+                plannedStartDate: $('#plannedStartDate').val() || null,
+                plannedEndDate: $('#plannedEndDate').val() || null,
+                actualStartDate: $('#actualStartDate').val() || null,
+                actualEndDate: $('#actualEndDate').val() || null,
+                notes: $('#phaseNotes').val() || null
+            })
+        });
+
+        const result = await response.json();
+        Swal.fire({
+            icon: result.success ? 'success' : 'error',
+            title: result.success ? @Json.Serialize(Localization.GetString("Success")) : @Json.Serialize(Localization.GetString("Error")),
+            text: result.message,
+            timer: result.success ? 1400 : undefined,
+            showConfirmButton: !result.success
+        }).then(function () {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    });
+
+    $('#btnSavePhaseActivity').on('click', async function () {
+        const phaseId = parseInt($('#phaseActivityPhaseId').val() || '0', 10);
+        const activityName = $('#phaseActivityName').val();
+        if (!phaseId || !activityName || activityName.trim() === '') {
+            Swal.fire({
+                icon: 'warning',
+                title: @Json.Serialize(Localization.GetString("Error")),
+                text: @Json.Serialize(Localization.GetString("ActivityRequired"))
+            });
+            return;
+        }
+
+        const response = await fetch(savePhaseActivityUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+            },
+            body: JSON.stringify({
+                phaseId: phaseId,
+                projectId: projectId,
+                sourceActivityId: $('#sourceActivityId').val() ? parseInt($('#sourceActivityId').val(), 10) : null,
+                referenceNumber: $('#phaseActivityReferenceNumber').val() || null,
+                activityName: activityName,
+                indicatorName: $('#phaseActivityIndicatorName').val() || null,
+                estimatedCost: $('#phaseActivityEstimatedCost').val() === '' ? null : parseFloat($('#phaseActivityEstimatedCost').val()),
+                targetValue: $('#phaseActivityTargetValue').val() || null,
+                verificationSource: $('#phaseActivityVerificationSource').val() || null,
+                risksAndAssumptions: $('#phaseActivityRisksAndAssumptions').val() || null,
+                startDate: $('#phaseActivityStartDate').val() || null,
+                endDate: $('#phaseActivityEndDate').val() || null
+            })
+        });
+
+        const result = await response.json();
+        Swal.fire({
+            icon: result.success ? 'success' : 'error',
+            title: result.success ? @Json.Serialize(Localization.GetString("Success")) : @Json.Serialize(Localization.GetString("Error")),
+            text: result.message,
+            timer: result.success ? 1400 : undefined,
+            showConfirmButton: !result.success
+        }).then(function () {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    });
+
+    $('.btn-phase-activity-edit').on('click', function () {
+        openPhaseActivityEditModal($(this));
+        return false;
+    });
+
+    $('.btn-phase-activity-add-task').on('click', function () {
+        resetPhaseTaskForm();
+        const activityId = $(this).data('phase-activity-id');
+        const activityName = $(this).data('activity-name');
+        $('#phaseTaskActivityId').val(String(activityId));
+        $('#phaseTaskBucketName').val(activityName || '');
+        populateTaskDependencyOptions(0);
+        renderChecklistItems([]);
+        renderTaskLinks([]);
+        $('#phaseTaskModalTitle').text(@Json.Serialize(Localization.GetString("AddTask")) + ' - ' + (activityName || ''));
+        updateTaskPriorityAppearance();
+        updateTaskProgressPreview();
+        phaseTaskModal?.show();
+        return false;
+    });
+
+    $('.task-clickable-row').on('click', function () {
+        openTaskDetailsModal($(this));
+    }).css('cursor', 'pointer');
+
+    $('#btnSavePhaseTask').on('click', async function () {
+        const phaseActivityId = parseInt($('#phaseTaskActivityId').val() || '0', 10);
+        const taskName = $('#phaseTaskName').val();
+        if (!phaseActivityId || !taskName || taskName.trim() === '') {
+            Swal.fire({
+                icon: 'warning',
+                title: @Json.Serialize(Localization.GetString("Error")),
+                text: @Json.Serialize(Localization.GetString("TaskNameRequired"))
+            });
+            return;
+        }
+
+        const response = await fetch(savePhaseTaskUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+            },
+            body: JSON.stringify({
+                phaseTaskId: parseInt($('#phaseTaskId').val() || '0', 10),
+                phaseActivityId: phaseActivityId,
+                projectId: projectId,
+                taskName: taskName,
+                startDate: $('#phaseTaskStartDate').val() || null,
+                endDate: $('#phaseTaskEndDate').val() || null,
+                priority: $('#phaseTaskPriority').val(),
+                percentComplete: parseInt($('#phaseTaskPercentComplete').val() || '0', 10),
+                notes: $('#phaseTaskNotes').val() || null,
+                dependentOnPhaseTaskId: $('#phaseTaskHasDependency').is(':checked') && $('#phaseTaskDependentOnTaskId').val() ? parseInt($('#phaseTaskDependentOnTaskId').val(), 10) : null,
+                dependencyType: $('#phaseTaskHasDependency').is(':checked') ? ($('#phaseTaskDependencyType').val() || null) : null,
+                assignedEmployeeIds: ($('#phaseTaskAssignedEmployeeIds').val() || []).map(Number),
+                checklistItems: getChecklistItemsPayload(),
+                fileLinks: getTaskLinksPayload()
+            })
+        });
+
+        const result = await response.json();
+        Swal.fire({
+            icon: result.success ? 'success' : 'error',
+            title: result.success ? @Json.Serialize(Localization.GetString("Success")) : @Json.Serialize(Localization.GetString("Error")),
+            text: result.message,
+            timer: result.success ? 1400 : undefined,
+            showConfirmButton: !result.success
+        }).then(function () {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    });
+});
+</script>
+<style>
+.phase-details-panel {
+    background: linear-gradient(180deg, #f8fbff 0%, #f8fafc 100%);
+    border-top: 1px solid #e2e8f0;
+    border-radius: 0 0 1rem 1rem;
+}
+
+.phase-activities-table thead th {
+    background: #eef2ff;
+    color: #334155;
+    font-weight: 700;
+}
+
+.activity-details-panel {
+    background:
+        radial-gradient(circle at 12% 18%, rgba(59,130,246,.14) 0, rgba(59,130,246,0) 26%),
+        radial-gradient(circle at 88% 22%, rgba(16,185,129,.12) 0, rgba(16,185,129,0) 24%),
+        radial-gradient(circle at 22% 82%, rgba(99,102,241,.10) 0, rgba(99,102,241,0) 20%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border-top: 1px dashed #cbd5e1;
+    border-radius: .85rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.activity-details-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: .55;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 220' preserveAspectRatio='none'%3E%3Cpath d='M0 120C120 165 240 180 360 150C480 120 600 40 720 36C840 32 960 104 1080 118C1140 125 1170 121 1200 112V220H0Z' fill='%23dbeafe'/%3E%3Cpath d='M0 145C120 100 240 88 360 120C480 152 600 212 720 208C840 204 960 140 1080 126C1140 119 1170 121 1200 128V220H0Z' fill='%23e0f2fe'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: bottom center;
+    background-size: 100% 120px;
+}
+
+.phase-tasks-table thead th {
+    background: rgba(255,255,255,.88);
+    color: #334155;
+    font-weight: 700;
+    backdrop-filter: blur(3px);
+}
+
+.phase-tasks-table tbody td {
+    background: rgba(255,255,255,.78);
+}
+
+.task-clickable-row {
+    transition: background-color .18s ease, transform .18s ease;
+}
+
+.task-clickable-row:hover td {
+    background: rgba(219, 234, 254, .7);
+}
+
+.task-table-hint {
+    font-size: .82rem;
+    color: #64748b;
+}
+
+.phase-master-row > td {
+    vertical-align: middle;
+    background: #fcfdff;
+}
+
+.activity-master-row > td {
+    vertical-align: middle;
+    background: #fff;
+}
+
+.phase-card-icon {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #eef2ff;
+    color: #4f46e5;
+}
+
+.phase-count-badge {
+    color: #475569;
+}
+
+.toggle-btn-text {
+    margin-inline-start: .35rem;
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.phase-toggle-btn,
+.activity-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .15rem;
+    border-radius: .7rem;
+    min-width: 4.5rem;
+}
+
+.details-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding-bottom: .6rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.details-panel-title {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.activity-name-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.task-name-with-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+}
+
+.task-dependency-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 999px;
+    background: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #c4b5fd;
+    font-size: .95rem;
+}
+
+.priority-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 78px;
+    padding: .35rem .7rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
+}
+
+.priority-low {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    border-color: #86efac;
+}
+
+.priority-medium {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+    border-color: #fcd34d;
+}
+
+.priority-high {
+    background: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5;
+}
+
+.priority-cell {
+    white-space: nowrap;
+}
+
+.task-progress-inline,
+.task-progress-preview {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+}
+
+.task-progress-bar-wrap {
+    flex: 1 1 auto;
+    min-width: 110px;
+    height: .7rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+
+.task-progress-bar {
+    background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+    border-radius: 999px;
+}
+
+.task-progress-text {
+    min-width: 44px;
+    font-size: .82rem;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
+.task-priority-select.task-priority-low {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+}
+
+.task-priority-select.task-priority-medium {
+    background: #fef3c7;
+    border-color: #fcd34d;
+    color: #92400e;
+}
+
+.task-priority-select.task-priority-high {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+}
+
+.link-card {
+    border: 1px solid #e2e8f0;
+    border-radius: .85rem;
+    background: rgba(255,255,255,.92);
+    padding: .9rem 1rem;
+}
+
+.link-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .75rem;
+}
+
+.link-card-title {
+    font-weight: 700;
+    color: #334155;
+}
+
+.task-link-list {
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+}
+
+.task-link-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .65rem .8rem;
+    border: 1px solid #e2e8f0;
+    border-radius: .8rem;
+    background: #f8fafc;
+}
+
+.task-link-anchor {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.task-link-anchor:hover {
+    text-decoration: underline;
+}
+
+.checklist-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    padding: 1rem;
+}
+
+.checklist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.checklist-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: .65rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.checklist-title {
+    font-size: 1rem;
+}
+
+.checklist-summary-text {
+    color: #475569;
+    font-size: .92rem;
+}
+
+.checklist-progress-wrap {
+    min-width: 220px;
+    flex: 1 1 220px;
+}
+
+.checklist-progress-bar-wrap {
+    height: .32rem;
+    background: #e5e7eb;
+    border-radius: 999px;
+}
+
+.checklist-progress-bar {
+    background: linear-gradient(90deg, #6366f1 0%, #3b82f6 100%);
+    border-radius: 999px;
+}
+
+.checklist-collapse-btn {
+    color: #475569;
+    text-decoration: none;
+}
+
+.checklist-collapse-btn:hover {
+    color: #1d4ed8;
+}
+
+.checklist-empty-state {
+    padding: .75rem 0;
+    font-size: .9rem;
+}
+
+.checklist-items {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+}
+
+.checklist-item {
+    display: grid;
+    grid-template-columns: 22px 28px minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: .65rem;
+    padding: .6rem .75rem;
+    border-radius: .85rem;
+    border: 1px solid #e2e8f0;
+    background: rgba(255,255,255,.88);
+    box-shadow: 0 6px 16px rgba(15,23,42,.05);
+}
+
+.checklist-item.dragging {
+    opacity: .55;
+}
+
+.checklist-item.is-complete {
+    background: #f8fafc;
+}
+
+.checklist-item.is-complete .checklist-item-title {
+    text-decoration: line-through;
+    color: #64748b;
+}
+
+.checklist-item-handle {
+    cursor: grab;
+    color: #94a3b8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.checklist-item-title {
+    border: 0;
+    background: transparent;
+    box-shadow: none !important;
+    padding-inline: .15rem;
+}
+
+.checklist-item-title:focus {
+    background: #fff;
+    border-radius: .45rem;
+}
+
+.checklist-item-delete {
+    text-decoration: none;
+}
+
+@@media (max-width: 767.98px) {
+    .checklist-item {
+        grid-template-columns: 22px 28px minmax(0, 1fr);
+    }
+
+    .checklist-item-delete {
+        grid-column: 3;
+        justify-self: end;
+    }
+}
+</style>
+}
